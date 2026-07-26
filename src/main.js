@@ -3,10 +3,10 @@ import { createMaterials } from './materials.js';
 import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
-import { createVRHands } from './hands.js?v=5';
+import { createVRHands } from './hands.js?v=6';
 import { loadDecorAssets } from './assets.js?v=2';
 import { loadPistol } from './weapons/pistol.js?v=2';
-import { loadTorch } from './tools/torch.js?v=1';
+import { loadTorch } from './tools/torch.js?v=2';
 import { GAME_TIME, INTERACTION } from './config.js?v=2';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
@@ -119,6 +119,7 @@ handsReady.then((handsSystem) => loadTorch({
   scene: world.scene,
   placement,
   grips: handsSystem?.objectGrips || world.grips,
+  hands: handsSystem,
   controllerModes,
   floorY: house.floorY,
   statusElement: status
@@ -134,7 +135,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
   status.textContent =
-    'Grip picks up pistol or torch · A/X uses the held item · other grip pulls the pistol slide';
+    'Grip picks up pistol or torch · A/X points with a free hand · poke the torch button with its index finger';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
