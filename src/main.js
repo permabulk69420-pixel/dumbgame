@@ -76,14 +76,18 @@ function refreshClockLabel(state) {
 
 gameState.subscribe(refreshClockLabel, { immediate: true });
 
-createVRHands({
+const handsReady = createVRHands({
   controllers: world.controllers,
   grips: world.grips,
   controllerModes,
   onError: (message) => console.warn(message)
 }).then((value) => {
   hands = value;
-}).catch(console.error);
+  return value;
+}).catch((error) => {
+  console.error('VR hands failed to load', error);
+  return null;
+});
 
 loadDecorAssets({
   scene: world.scene,
@@ -95,14 +99,14 @@ loadDecorAssets({
   decor = value;
 }).catch(console.error);
 
-loadPistol({
+handsReady.then((handsSystem) => loadPistol({
   scene: world.scene,
   placement,
-  grips: world.grips,
+  grips: handsSystem?.objectGrips || world.grips,
   controllerModes,
   floorY: house.floorY,
   statusElement: status
-}).then((value) => {
+})).then((value) => {
   pistol = value;
 }).catch((error) => {
   console.error('Pistol failed to load', error);
