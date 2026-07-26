@@ -5,6 +5,7 @@ import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js';
 import { loadDecorAssets } from './assets.js';
+import { loadPistol } from './weapons/pistol.js';
 import { GAME_TIME, INTERACTION } from './config.js';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
@@ -62,6 +63,7 @@ const locomotion = createLocomotion({
 
 let hands = { update() {} };
 let decor = { update() {} };
+let pistol = { update() {} };
 let displayedClockKey = '';
 
 function refreshClockLabel(state) {
@@ -93,12 +95,26 @@ loadDecorAssets({
   decor = value;
 }).catch(console.error);
 
+loadPistol({
+  scene: world.scene,
+  placement,
+  grips: world.grips,
+  controllerModes,
+  floorY: house.floorY,
+  statusElement: status
+}).then((value) => {
+  pistol = value;
+}).catch((error) => {
+  console.error('Pistol failed to load', error);
+  status.textContent = 'House loaded; the pistol failed to load.';
+});
+
 world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.position.copy(house.spawn);
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
   status.textContent =
-    'A/X toggles pointing · trigger uses controls · grip grabs drawers · B/Y moves furniture in decorating mode';
+    'Grip picks up the pistol · other grip pulls its slide · A/X releases its magazine · trigger moves the trigger';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -147,6 +163,7 @@ world.renderer.setAnimationLoop((time) => {
   placement.update(dt);
   hands.update(dt);
   decor.update(dt);
+  pistol.update(dt);
 
   if (world.renderer.xr.isPresenting) {
     locomotion.update(dt);
