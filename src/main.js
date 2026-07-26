@@ -6,7 +6,7 @@ import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js?v=6';
 import { loadDecorAssets } from './assets.js?v=2';
 import { loadPistol } from './weapons/pistol.js?v=2';
-import { loadTorch } from './tools/torch.js?v=2';
+import { loadTorch } from './tools/torch.js?v=3';
 import { GAME_TIME, INTERACTION } from './config.js?v=2';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
