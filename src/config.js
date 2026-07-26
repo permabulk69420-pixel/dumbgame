@@ -25,6 +25,11 @@ export const PLAYER = Object.freeze({
   turnSpeed: 1.9
 });
 
+export const INTERACTION = Object.freeze({
+  decorationEnabledByDefault: true,
+  decorationToggleHoldSeconds: 0.75
+});
+
 export const GAME_TIME = Object.freeze({
   realSecondsPerDay: 30 * 60,
   sleepHour: 8,
