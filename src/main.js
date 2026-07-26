@@ -4,9 +4,10 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js?v=5';
-import { loadDecorAssets } from './assets.js';
+import { loadDecorAssets } from './assets.js?v=2';
 import { loadPistol } from './weapons/pistol.js?v=2';
-import { GAME_TIME, INTERACTION } from './config.js';
+import { loadTorch } from './tools/torch.js?v=1';
+import { GAME_TIME, INTERACTION } from './config.js?v=2';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -64,6 +65,7 @@ const locomotion = createLocomotion({
 let hands = { update() {} };
 let decor = { update() {} };
 let pistol = { update() {} };
+let torch = { update() {} };
 let displayedClockKey = '';
 
 function refreshClockLabel(state) {
@@ -113,12 +115,26 @@ handsReady.then((handsSystem) => loadPistol({
   status.textContent = 'Apartment loaded; the pistol failed to load.';
 });
 
+handsReady.then((handsSystem) => loadTorch({
+  scene: world.scene,
+  placement,
+  grips: handsSystem?.objectGrips || world.grips,
+  controllerModes,
+  floorY: house.floorY,
+  statusElement: status
+})).then((value) => {
+  torch = value;
+}).catch((error) => {
+  console.error('Torch failed to load', error);
+  status.textContent = 'Apartment loaded; the torch failed to load.';
+});
+
 world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.position.copy(house.spawn);
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
   status.textContent =
-    'Grip picks up the pistol · other grip pulls its slide · A/X releases its magazine · trigger moves the trigger';
+    'Grip picks up pistol or torch · A/X uses the held item · other grip pulls the pistol slide';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -168,6 +184,7 @@ world.renderer.setAnimationLoop((time) => {
   hands.update(dt);
   decor.update(dt);
   pistol.update(dt);
+  torch.update(dt);
 
   if (world.renderer.xr.isPresenting) {
     locomotion.update(dt);
