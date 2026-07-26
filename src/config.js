@@ -13,7 +13,11 @@ export const HOUSE = Object.freeze({
 export const ASSETS = Object.freeze({
   leftHand: './assets/models/hands/LeftHand.glb',
   rightHand: './assets/models/hands/RightHand.glb',
-  computerDesk: './assets/models/furniture/ComputerDesk.glb'
+  computerDesk: './assets/models/furniture/ComputerDesk.glb',
+  monitor: './assets/models/computer/modern_flat_monitor_24in.glb',
+  keyboard: './assets/models/computer/Keyboard_corrected.glb',
+  mouse: './assets/models/computer/modern_desktop_mouse.glb',
+  computerTower: './assets/models/computer/modern_desktop_tower.glb'
 });
 
 export const PLAYER = Object.freeze({
