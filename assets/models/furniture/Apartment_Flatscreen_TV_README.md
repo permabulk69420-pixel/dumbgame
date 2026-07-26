@@ -2,14 +2,26 @@
 
 ## Files
 
-- `assets/models/props/Apartment_Flatscreen_TV.glb`
-- `assets/models/props/Apartment_Flatscreen_TV_README.md`
+- `assets/models/furniture/Apartment_Flatscreen_TV_v2.glb`
+- `assets/models/furniture/Apartment_Flatscreen_TV_README.md`
 
 ## Asset summary
 
 A reusable, game-ready **75-inch-class 16:9 flatscreen television** intended for close VR viewing in a residential apartment. It has a slim matte-black body, low-reflection screen, realistic rear electronics housing, brushed-metal feet, one separate physical power button, a separately addressable status light, and a dedicated screen-content anchor for a future video or animated texture.
 
-The GLB contains no baked playback or power animation. Runtime code should control the button press, status-light emission, and screen material/video texture.
+The GLB contains no baked playback or power animation. Runtime code controls the button press, status-light emission, and screen material/video texture.
+
+## Current project integration
+
+The TV is loaded together with `Apartment_Entertainment_Unit.glb` by `src/furniture/entertainment-setup.js`.
+
+- The TV root is parented to the cabinet node `TV_Placement_Anchor`, placing its feet directly on the cabinet top.
+- The cabinet and television are registered as one decoration-mode placeable, so moving the entertainment unit keeps the TV mounted correctly.
+- Pointing at the enlarged invisible power-button interaction area and pressing the trigger toggles the TV.
+- The visible `PowerButtonPivot` travels **0.003 m** and springs back.
+- `StatusLight` becomes emissive while powered.
+- `Screen` receives a restrained powered glow for now; future video, animated canvas, or story imagery should still replace only the `Screen` material or map.
+- Initial apartment placement is opposite the couch against the living-room hall wall.
 
 ## Coordinate system and placement
 
@@ -186,7 +198,7 @@ The final binary GLB was reloaded and checked after writing:
 
 - The user did not specify a diagonal size, mounting type, or exact cabinet placement, so the asset was designed as a **large 75-inch-class television with included feet**.
 - The power control is placed visibly on the lower-right front bezel for reliable VR interaction, rather than hidden underneath the chassis.
-- The status light is supplied in an unlit rest state because the requested on/off behaviour will be controlled later by runtime code.
+- The status light is supplied in an unlit rest state because the requested on/off behaviour is controlled by runtime code.
 - No speakers, logos, text, remote control, cable, or branded UI are included.
 
 ## File integrity
