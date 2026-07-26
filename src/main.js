@@ -7,8 +7,8 @@ import { createVRHands } from './hands.js?v=6';
 import { loadDecorAssets } from './assets.js?v=2';
 import { loadPistol } from './weapons/pistol.js?v=3';
 import { loadTorch } from './tools/torch.js?v=3';
-import { createApartmentEntryDoor } from './doors/apartment-entry-door.js?v=1';
-import { GAME_TIME, INTERACTION } from './config.js?v=2';
+import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=2';
+import { GAME_TIME, INTERACTION } from './config.js?v=3';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -55,14 +55,25 @@ const placement = createPlacementSystem({
   statusElement: status
 });
 
-const entryDoor = createApartmentEntryDoor({
+let entryDoor = {
+  update() {},
+  setLocked() { return false; },
+  setAngle() { return 0; },
+  getAngle() { return 0; }
+};
+
+loadApartmentEntryDoor({
   parent: house.root,
   placement,
   collisionSegments: house.collisionSegments,
   controllerModes,
   floorY: house.floorY,
-  materials,
   statusElement: status
+}).then((value) => {
+  entryDoor = value;
+}).catch((error) => {
+  console.error('Apartment entry door failed to load', error);
+  status.textContent = 'Apartment loaded; the entry door failed to load.';
 });
 
 const locomotion = createLocomotion({
@@ -172,9 +183,9 @@ window.game = {
   setDecorationMode: controllerModes.setDecorationMode,
   isDecorationMode: controllerModes.isDecorationMode,
   setPointing: controllerModes.setPointing,
-  setEntryDoorLocked: entryDoor.setLocked,
-  setEntryDoorAngle: entryDoor.setAngle,
-  getEntryDoorAngle: entryDoor.getAngle,
+  setEntryDoorLocked: (...args) => entryDoor.setLocked(...args),
+  setEntryDoorAngle: (...args) => entryDoor.setAngle(...args),
+  getEntryDoorAngle: () => entryDoor.getAngle(),
   resetGameState: gameState.reset
 };
 
