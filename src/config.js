@@ -17,7 +17,8 @@ export const ASSETS = Object.freeze({
   monitor: './assets/models/computer/modern_flat_monitor_24in.glb',
   keyboard: './assets/models/computer/Keyboard_corrected.glb',
   mouse: './assets/models/computer/modern_desktop_mouse.glb',
-  computerTower: './assets/models/computer/modern_desktop_tower.glb'
+  computerTower: './assets/models/computer/modern_desktop_tower.glb',
+  pistol: './assets/models/tools/Generic_Striker_Pistol_v5_final.glb'
 });
 
 export const PLAYER = Object.freeze({
