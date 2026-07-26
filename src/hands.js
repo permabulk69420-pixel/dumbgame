@@ -2,6 +2,20 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { ASSETS } from './config.js';
 import { loadGLB, prepareModel } from './asset-loader.js';
 
+// The hand meshes are authored with fingers along -Z and palms along -Y.
+// A mirrored 90-degree roll makes the palms wrap inward around the Quest grips
+// instead of appearing flat. Keep this separate from object-specific grip poses.
+const HAND_GRIP_OFFSETS = Object.freeze({
+  left: Object.freeze({
+    position: Object.freeze([0, 0, 0]),
+    rotation: Object.freeze([0, 0, Math.PI / 2])
+  }),
+  right: Object.freeze({
+    position: Object.freeze([0, 0, 0]),
+    rotation: Object.freeze([0, 0, -Math.PI / 2])
+  })
+});
+
 function createActions(root, clips) {
   const mixer = new THREE.AnimationMixer(root);
   const actions = new Map();
@@ -45,14 +59,20 @@ export async function createVRHands({
     grip: grips[index],
     inputSource: null,
     handedness: '',
+    handAnchor: null,
     handRoot: null,
     mixerState: null
   }));
 
-  function attach(state, handedness) {
-    if (state.handRoot) state.grip.remove(state.handRoot);
+  function detach(state) {
+    if (state.handAnchor) state.grip.remove(state.handAnchor);
+    state.handAnchor = null;
     state.handRoot = null;
     state.mixerState = null;
+  }
+
+  function attach(state, handedness) {
+    detach(state);
 
     const gltf = models[handedness];
     if (!gltf) {
@@ -62,7 +82,16 @@ export async function createVRHands({
 
     const root = prepareModel(gltf.scene, { castShadow: true, receiveShadow: false });
     root.name = `${handedness}-vr-hand`;
-    state.grip.add(root);
+
+    const offset = HAND_GRIP_OFFSETS[handedness];
+    const anchor = new THREE.Group();
+    anchor.name = `${handedness}-hand-grip-offset`;
+    anchor.position.fromArray(offset.position);
+    anchor.rotation.set(...offset.rotation);
+    anchor.add(root);
+    state.grip.add(anchor);
+
+    state.handAnchor = anchor;
     state.handRoot = root;
     state.mixerState = createActions(root, gltf.animations);
     setPose(state.mixerState, 'Open', 0);
@@ -79,9 +108,7 @@ export async function createVRHands({
     state.controller.addEventListener('disconnected', () => {
       state.inputSource = null;
       state.handedness = '';
-      if (state.handRoot) state.grip.remove(state.handRoot);
-      state.handRoot = null;
-      state.mixerState = null;
+      detach(state);
     });
   }
 
