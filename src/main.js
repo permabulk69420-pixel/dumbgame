@@ -5,7 +5,8 @@ import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js';
 import { loadDecorAssets } from './assets.js';
-import { GAME_TIME } from './config.js';
+import { GAME_TIME, INTERACTION } from './config.js';
+import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js';
@@ -34,10 +35,18 @@ const dayNight = createDayNightCycle({
 });
 const events = createEventScheduler({ gameState });
 
+const controllerModes = createControllerModes({
+  controllers: world.controllers,
+  statusElement: status,
+  decorationEnabledByDefault: INTERACTION.decorationEnabledByDefault,
+  decorationToggleHoldSeconds: INTERACTION.decorationToggleHoldSeconds
+});
+
 const placement = createPlacementSystem({
   scene: world.scene,
   renderer: world.renderer,
   controllers: world.controllers,
+  controllerModes,
   floorY: house.floorY,
   bounds: house.bounds,
   statusElement: status
@@ -68,6 +77,7 @@ gameState.subscribe(refreshClockLabel, { immediate: true });
 createVRHands({
   controllers: world.controllers,
   grips: world.grips,
+  controllerModes,
   onError: (message) => console.warn(message)
 }).then((value) => {
   hands = value;
@@ -87,7 +97,8 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.position.copy(house.spawn);
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
-  status.textContent = 'Left stick moves · right stick turns · point and hold trigger to place objects';
+  status.textContent =
+    'A/X toggles pointing · trigger uses controls · grip grabs drawers · B/Y moves furniture in decorating mode';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -97,7 +108,7 @@ world.renderer.xr.addEventListener('sessionend', () => {
   status.textContent = 'Quest: left stick moves, right stick turns smoothly. No snap turning.';
 });
 
-// Stable hooks for future beds, computers, doors and story scripts.
+// Stable hooks for future beds, computers, doors, story scripts and temporary decorating tools.
 window.game = {
   readState: gameState.read,
   setFlag: gameState.setFlag,
@@ -110,6 +121,9 @@ window.game = {
   sleepToNextDay: () => clock.sleepToNextDay(GAME_TIME.sleepHour, GAME_TIME.sleepMinute),
   setTimeScale: clock.setTimeScale,
   pauseTime: clock.setPaused,
+  setDecorationMode: controllerModes.setDecorationMode,
+  isDecorationMode: controllerModes.isDecorationMode,
+  setPointing: controllerModes.setPointing,
   resetGameState: gameState.reset
 };
 
@@ -122,6 +136,8 @@ let previewAngle = 0.5;
 world.renderer.setAnimationLoop((time) => {
   const dt = Math.min(0.05, (time - lastTime) / 1000);
   lastTime = time;
+
+  controllerModes.update(dt);
 
   const advanceClock = GAME_TIME.advanceOnlyInXR ? world.renderer.xr.isPresenting : true;
   clock.update(dt, advanceClock);
