@@ -49,7 +49,7 @@ export async function loadDecorAssets({
 
     if (statusElement) {
       statusElement.textContent =
-        'Computer loaded · pull drawers with trigger · press the computer controls directly';
+        'Computer loaded · grip drawers · A/X points · trigger uses controls · B/Y decorates';
     }
   } catch (error) {
     console.error('Computer desk setup failed to load', error);
