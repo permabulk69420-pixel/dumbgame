@@ -22,6 +22,20 @@ function invisibleZone(width, height, depth) {
   return mesh;
 }
 
+function removeProceduralEntryFrame(parent, centreX, floorY, centreZ) {
+  // house.js originally supplied an unnamed four-piece frame around every doorway.
+  // Remove only the exact entry-frame group so the finished GLB frame does not overlap it.
+  const oldFrame = parent.children.find((child) =>
+    child.isGroup &&
+    !child.name &&
+    child.children.length === 4 &&
+    Math.abs(child.position.x - centreX) < 0.001 &&
+    Math.abs(child.position.y - floorY) < 0.001 &&
+    Math.abs(child.position.z - centreZ) < 0.001
+  );
+  oldFrame?.removeFromParent();
+}
+
 export async function loadApartmentEntryDoor({
   parent,
   placement,
@@ -43,6 +57,7 @@ export async function loadApartmentEntryDoor({
   // floor-centred, with corridor/front facing local -Z and the apartment at local +Z.
   const centreX = -HOUSE.width / 2 + 16 * SCALE;
   const centreZ = -HOUSE.depth / 2;
+  removeProceduralEntryFrame(parent, centreX, floorY, centreZ);
   assembly.position.set(centreX, floorY, centreZ);
   assembly.quaternion.identity();
   assembly.scale.set(1, 1, 1);
