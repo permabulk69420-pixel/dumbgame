@@ -1,9 +1,10 @@
-import { ASSETS } from './config.js?v=2';
+import { ASSETS } from './config.js?v=4';
 import { loadGLB, prepareModel } from './asset-loader.js';
 import { loadComputerSetup } from './computer/computer-setup.js';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
+import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=1';
 
 export async function loadDecorAssets({
   scene,
@@ -86,6 +87,20 @@ export async function loadDecorAssets({
   } catch (error) {
     console.error('Couch failed to load', error);
     if (statusElement) statusElement.textContent = 'Apartment loaded; the couch failed to load.';
+  }
+
+  try {
+    const entertainment = await loadEntertainmentSetup({
+      scene,
+      placement,
+      floorY,
+      statusElement
+    });
+    updaters.push(entertainment.update);
+    disposers.push(entertainment.dispose);
+  } catch (error) {
+    console.error('TV entertainment setup failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the TV setup failed to load.';
   }
 
   return {
