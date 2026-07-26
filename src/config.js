@@ -14,11 +14,13 @@ export const ASSETS = Object.freeze({
   leftHand: './assets/models/hands/LeftHand.glb',
   rightHand: './assets/models/hands/RightHand.glb',
   computerDesk: './assets/models/furniture/ComputerDesk.glb',
+  couch: './assets/models/furniture/Two_Seat_Black_Leather_Couch.glb',
   monitor: './assets/models/computer/modern_flat_monitor_24in.glb',
   keyboard: './assets/models/computer/Keyboard_corrected.glb',
   mouse: './assets/models/computer/modern_desktop_mouse.glb',
   computerTower: './assets/models/computer/modern_desktop_tower.glb',
-  pistol: './assets/models/tools/Generic_Striker_Pistol_v5_final.glb'
+  pistol: './assets/models/tools/Generic_Striker_Pistol_v5_final.glb',
+  torch: './assets/models/tools/Generic_Handheld_Torch_v2_forward_button.glb'
 });
 
 export const PLAYER = Object.freeze({
