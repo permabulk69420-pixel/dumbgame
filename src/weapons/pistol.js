@@ -10,6 +10,11 @@ const MAG_RELEASE_TRAVEL = 0.0025;
 const MAG_SEATED_POSITION = Object.freeze([0, 0.079, 0.0395]);
 const MAG_INSERT_DISTANCE = 0.115;
 const GRAVITY = 7.5;
+const FIRE_TRIGGER_THRESHOLD = 0.76;
+const FIRE_TRIGGER_RESET = 0.18;
+const FIRE_COOLDOWN = 0.11;
+const MUZZLE_FLASH_DURATION = 0.045;
+const MUZZLE_LIGHT_INTENSITY = 180;
 
 const tempPosition = new THREE.Vector3();
 const tempPositionB = new THREE.Vector3();
@@ -53,6 +58,147 @@ function settleOnFloor(root, floorY, velocity, dt, bounds) {
   return false;
 }
 
+function pulseHand(controllerModes, handedness, strength = 0.58, duration = 52) {
+  const gamepad = controllerModes?.getState?.(handedness)?.inputSource?.gamepad;
+  const actuator = gamepad?.hapticActuators?.[0] || gamepad?.vibrationActuator;
+  try {
+    if (actuator?.pulse) {
+      const result = actuator.pulse(strength, duration);
+      result?.catch?.(() => {});
+    } else if (actuator?.playEffect) {
+      const result = actuator.playEffect('dual-rumble', {
+        duration,
+        strongMagnitude: strength,
+        weakMagnitude: strength * 0.62
+      });
+      result?.catch?.(() => {});
+    }
+  } catch {
+    // Firing still works on runtimes without controller haptics.
+  }
+}
+
+function createMuzzleFlash(muzzlePoint) {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffc56b,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+
+  const flash = new THREE.Group();
+  flash.name = 'Runtime_MuzzleFlash';
+  flash.position.z = -0.035;
+  flash.visible = false;
+
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.026, 0), material);
+  core.scale.set(0.72, 0.72, 2.5);
+  flash.add(core);
+
+  const flareA = new THREE.Mesh(new THREE.PlaneGeometry(0.105, 0.048), material.clone());
+  flareA.rotation.z = Math.PI * 0.25;
+  flash.add(flareA);
+
+  const flareB = flareA.clone();
+  flareB.rotation.y = Math.PI * 0.5;
+  flareB.rotation.z = -Math.PI * 0.22;
+  flash.add(flareB);
+
+  const light = new THREE.PointLight(0xffad55, 0, 3.2, 2);
+  light.name = 'Runtime_MuzzleLight';
+  light.position.set(0, 0, -0.025);
+  light.castShadow = false;
+
+  muzzlePoint.add(flash, light);
+  return { flash, light };
+}
+
+function createGunshotAudio() {
+  let context = null;
+  let master = null;
+
+  function ensureContext() {
+    if (context) return context;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    context = new AudioContextClass();
+    master = context.createDynamicsCompressor();
+    master.threshold.value = -10;
+    master.knee.value = 12;
+    master.ratio.value = 5;
+    master.attack.value = 0.001;
+    master.release.value = 0.16;
+    master.connect(context.destination);
+    return context;
+  }
+
+  function noiseBuffer(ctx, duration, decay) {
+    const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      const t = i / ctx.sampleRate;
+      const envelope = Math.exp(-t / decay);
+      data[i] = (Math.random() * 2 - 1) * envelope;
+    }
+    return buffer;
+  }
+
+  return function playGunshot() {
+    const ctx = ensureContext();
+    if (!ctx || !master) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    const now = ctx.currentTime;
+    const pitchVariation = 0.96 + Math.random() * 0.08;
+
+    const crack = ctx.createBufferSource();
+    crack.buffer = noiseBuffer(ctx, 0.105, 0.018);
+    crack.playbackRate.value = pitchVariation;
+    const crackHighpass = ctx.createBiquadFilter();
+    crackHighpass.type = 'highpass';
+    crackHighpass.frequency.value = 620;
+    const crackLowpass = ctx.createBiquadFilter();
+    crackLowpass.type = 'lowpass';
+    crackLowpass.frequency.value = 9500;
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(0.72, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.105);
+    crack.connect(crackHighpass).connect(crackLowpass).connect(crackGain).connect(master);
+    crack.start(now);
+    crack.stop(now + 0.11);
+
+    const thump = ctx.createOscillator();
+    thump.type = 'triangle';
+    thump.frequency.setValueAtTime(165 * pitchVariation, now);
+    thump.frequency.exponentialRampToValueAtTime(48, now + 0.09);
+    const thumpGain = ctx.createGain();
+    thumpGain.gain.setValueAtTime(0.28, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    thump.connect(thumpGain).connect(master);
+    thump.start(now);
+    thump.stop(now + 0.105);
+
+    const tail = ctx.createBufferSource();
+    tail.buffer = noiseBuffer(ctx, 0.24, 0.075);
+    tail.playbackRate.value = 0.92 + Math.random() * 0.1;
+    const tailBand = ctx.createBiquadFilter();
+    tailBand.type = 'bandpass';
+    tailBand.frequency.value = 1050;
+    tailBand.Q.value = 0.72;
+    const tailGain = ctx.createGain();
+    tailGain.gain.setValueAtTime(0.18, now + 0.012);
+    tailGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    tail.connect(tailBand).connect(tailGain).connect(master);
+    tail.start(now + 0.008);
+    tail.stop(now + 0.25);
+  };
+}
+
 export async function loadPistol({
   scene,
   placement,
@@ -73,6 +219,7 @@ export async function loadPistol({
   const magazineGripPoint = requireNode(modelRoot, 'Magazine_Grip_Point');
   const magazineWellPoint = requireNode(modelRoot, 'Magazine_Well_Point');
   const magazineRelease = requireNode(modelRoot, 'Magazine_Release');
+  const muzzlePoint = requireNode(modelRoot, 'Muzzle_Point');
 
   // The palm socket is correct spatially, but its roll is opposite the pistol locator.
   // Rotate the empty locator—not the tracked hand—so the slide sits above the fist.
@@ -84,6 +231,8 @@ export async function loadPistol({
   const releaseRestX = magazineRelease.position.x;
   const slideRestX = slide.position.x;
   const slideRestY = slide.position.y;
+  const muzzleEffect = createMuzzleFlash(muzzlePoint);
+  const playGunshot = createGunshotAudio();
 
   // Temporary test position on the computer desk. It remains upright so it is easy to target.
   modelRoot.position.set(3.82, floorY + 0.79, 5.62);
@@ -101,7 +250,11 @@ export async function loadPistol({
   let magazineSeated = true;
   let magazineFalling = false;
   let slideReturning = false;
+  let slideHeld = false;
   let releaseAnimation = 0;
+  let triggerLatched = false;
+  let fireCooldown = 0;
+  let muzzleFlashTime = 0;
   let unregisterSlide = null;
   let unregisterMagazine = null;
 
@@ -114,9 +267,36 @@ export async function loadPistol({
     if (statusElement) statusElement.textContent = text;
   };
 
+  function fireShot() {
+    if (!holder || fireCooldown > 0) return;
+    fireCooldown = FIRE_COOLDOWN;
+
+    if (!magazineSeated) {
+      pulseHand(controllerModes, holder.handedness, 0.12, 24);
+      setStatus('Click · magazine missing');
+      return;
+    }
+
+    muzzleFlashTime = MUZZLE_FLASH_DURATION;
+    muzzleEffect.flash.visible = true;
+    muzzleEffect.flash.rotation.z = Math.random() * Math.PI;
+    const randomScale = 0.88 + Math.random() * 0.34;
+    muzzleEffect.flash.scale.setScalar(randomScale);
+    muzzleEffect.light.intensity = MUZZLE_LIGHT_INTENSITY;
+
+    if (!slideHeld) {
+      slide.position.set(slideRestX, slideRestY, SLIDE_REAR_Z);
+      slideReturning = true;
+    }
+
+    pulseHand(controllerModes, holder.handedness);
+    playGunshot();
+  }
+
   function disableSlideInteraction() {
     unregisterSlide?.();
     unregisterSlide = null;
+    slideHeld = false;
   }
 
   function enableSlideInteraction() {
@@ -132,6 +312,7 @@ export async function loadPistol({
         grip.getWorldPosition(tempPosition);
         pistol.worldToLocal(tempPosition);
         slideReturning = false;
+        slideHeld = true;
         setStatus('Pull the slide rearward · release grip to let it snap forward');
         return {
           grip,
@@ -150,8 +331,9 @@ export async function loadPistol({
         );
       },
       end() {
+        slideHeld = false;
         slideReturning = true;
-        setStatus('Pistol held · trigger moves trigger · A/X releases magazine · other grip pulls slide');
+        setStatus('Pistol held · trigger fires · A/X releases magazine · other grip pulls slide');
       }
     });
   }
@@ -235,16 +417,18 @@ export async function loadPistol({
       holder = { handedness, grip };
       pistolFalling = false;
       pistolVelocity.set(0, 0, 0);
+      triggerLatched = false;
       controllerModes?.setPointing?.(handedness, false);
       attachLocatorToGrip(modelRoot, pistolGripMatrix, grip);
       enableSlideInteraction();
-      setStatus('Pistol held · trigger moves trigger · A/X releases magazine · other grip pulls slide');
+      setStatus('Pistol held · trigger fires · A/X releases magazine · other grip pulls slide');
       return { handedness };
     },
     end({ handedness }) {
       if (holder?.handedness !== handedness) return;
       scene.attach(modelRoot);
       holder = null;
+      triggerLatched = false;
       disableSlideInteraction();
       pistolFalling = true;
       pistolVelocity.set(0, -0.1, 0);
@@ -253,10 +437,23 @@ export async function loadPistol({
   });
 
   function update(dt) {
+    fireCooldown = Math.max(0, fireCooldown - dt);
+
     if (holder) {
       const modeState = controllerModes?.getState?.(holder.handedness);
-      const triggerAmount = modeState?.inputSource?.gamepad?.buttons?.[0]?.value ?? 0;
-      trigger.rotation.x = triggerRestX - TRIGGER_TRAVEL * THREE.MathUtils.clamp(triggerAmount, 0, 1);
+      const triggerAmount = THREE.MathUtils.clamp(
+        modeState?.inputSource?.gamepad?.buttons?.[0]?.value ?? 0,
+        0,
+        1
+      );
+      trigger.rotation.x = triggerRestX - TRIGGER_TRAVEL * triggerAmount;
+
+      if (triggerAmount >= FIRE_TRIGGER_THRESHOLD && !triggerLatched) {
+        triggerLatched = true;
+        fireShot();
+      } else if (triggerAmount <= FIRE_TRIGGER_RESET) {
+        triggerLatched = false;
+      }
 
       if (modeState?.primaryPressed) {
         controllerModes?.setPointing?.(holder.handedness, false);
@@ -264,6 +461,17 @@ export async function loadPistol({
       }
     } else {
       trigger.rotation.x = triggerRestX;
+      triggerLatched = false;
+    }
+
+    if (muzzleFlashTime > 0) {
+      muzzleFlashTime = Math.max(0, muzzleFlashTime - dt);
+      const flashRatio = muzzleFlashTime / MUZZLE_FLASH_DURATION;
+      muzzleEffect.light.intensity = MUZZLE_LIGHT_INTENSITY * flashRatio * flashRatio;
+      muzzleEffect.flash.visible = muzzleFlashTime > 0;
+    } else {
+      muzzleEffect.flash.visible = false;
+      muzzleEffect.light.intensity = 0;
     }
 
     if (slideReturning) {
@@ -298,6 +506,7 @@ export async function loadPistol({
     update,
     isHeld: () => Boolean(holder),
     isMagazineSeated: () => magazineSeated,
+    fire: fireShot,
     dispose() {
       unregisterPistol();
       disableSlideInteraction();
