@@ -2,11 +2,15 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { thumbstick, deadzone } from './locomotion.js';
 
 const DEFAULT_STORAGE_KEY = 'dumbgame-object-placements-v1';
+const COLOUR_USE = 0x7dc8ff;
+const COLOUR_GRAB = 0x7dffb2;
+const COLOUR_DECOR = 0xffc46b;
 
 export function createPlacementSystem({
   scene,
   renderer,
   controllers,
+  controllerModes = null,
   floorY = 0,
   bounds = null,
   statusElement = null,
@@ -17,6 +21,7 @@ export function createPlacementSystem({
   const placeables = [];
   const states = [];
   const grabInteractions = new Set();
+  const useInteractions = new Set();
   const raycaster = new THREE.Raycaster();
   const rotationMatrix = new THREE.Matrix4();
   const origin = new THREE.Vector3();
@@ -68,11 +73,11 @@ export function createPlacementSystem({
     return null;
   }
 
-  function resolveGrabInteraction(object) {
+  function resolveInteraction(object, property, collection) {
     let current = object;
     while (current) {
-      const interaction = current.userData.grabInteraction;
-      if (interaction && grabInteractions.has(interaction)) return interaction;
+      const interaction = current.userData[property];
+      if (interaction && collection.has(interaction)) return interaction;
       current = current.parent;
     }
     return null;
@@ -113,9 +118,9 @@ export function createPlacementSystem({
     });
   }
 
-  function registerGrabInteraction(interactionRoot, handlers = {}) {
+  function registerInteraction(collection, property, interactionRoot, handlers = {}) {
     if (!interactionRoot?.traverse) {
-      throw new Error('registerGrabInteraction requires an Object3D interaction root');
+      throw new Error('Interaction registration requires an Object3D root');
     }
 
     const record = {
@@ -127,17 +132,25 @@ export function createPlacementSystem({
       end: handlers.end
     };
 
-    grabInteractions.add(record);
+    collection.add(record);
     interactionRoot.traverse((child) => {
-      child.userData.grabInteraction = record;
+      child.userData[property] = record;
     });
 
     return () => {
-      grabInteractions.delete(record);
+      collection.delete(record);
       interactionRoot.traverse((child) => {
-        if (child.userData.grabInteraction === record) delete child.userData.grabInteraction;
+        if (child.userData[property] === record) delete child.userData[property];
       });
     };
+  }
+
+  function registerGrabInteraction(interactionRoot, handlers = {}) {
+    return registerInteraction(grabInteractions, 'grabInteraction', interactionRoot, handlers);
+  }
+
+  function registerUseInteraction(interactionRoot, handlers = {}) {
+    return registerInteraction(useInteractions, 'useInteraction', interactionRoot, handlers);
   }
 
   function clearSavedPlacement(id) {
@@ -152,96 +165,139 @@ export function createPlacementSystem({
     return { origin, direction };
   }
 
-  function findHit(state) {
-    if (!placeables.length) return null;
+  function setRay(state) {
     const ray = getControllerRay(state);
     raycaster.set(ray.origin, ray.direction);
     raycaster.near = 0.05;
     raycaster.far = maxRayDistance;
-    const hits = raycaster.intersectObjects(placeables, true);
+    return ray;
+  }
 
+  function findInteractionHit(state, collection, property) {
+    if (!collection.size) return null;
+    setRay(state);
+    const roots = [...collection].map((record) => record.target).filter(Boolean);
+    const hits = raycaster.intersectObjects(roots, true);
     for (const hit of hits) {
-      const root = resolvePlaceable(hit.object);
-      if (!root || (root.userData.heldBy && root.userData.heldBy !== state)) continue;
-
-      const interaction = resolveGrabInteraction(hit.object);
+      const interaction = resolveInteraction(hit.object, property, collection);
       if (interaction) {
         return {
-          root,
           hit,
           interaction,
+          root: resolvePlaceable(hit.object) || interaction.target,
           highlightObject: interaction.target
         };
       }
-
-      return { root, hit, interaction: null, highlightObject: root };
     }
     return null;
   }
 
-  function beginGrab(state) {
-    if (state.grabbed || state.interaction) return;
-    const result = findHit(state);
-    if (!result) return;
+  function findPlaceableHit(state) {
+    if (!placeables.length) return null;
+    setRay(state);
+    const hits = raycaster.intersectObjects(placeables, true);
+    for (const hit of hits) {
+      const root = resolvePlaceable(hit.object);
+      if (root && (!root.userData.heldBy || root.userData.heldBy === state)) {
+        return { root, hit, highlightObject: root };
+      }
+    }
+    return null;
+  }
 
-    state.grabDistance = THREE.MathUtils.clamp(result.hit.distance, 0.65, maxGrabDistance);
+  function beginInteraction(state, kind, result) {
+    if (!result) return false;
+    const interaction = result.interaction;
+    const context = interaction.begin?.({
+      controller: state.controller,
+      inputSource: state.inputSource,
+      handedness: state.handedness,
+      hit: result.hit,
+      root: result.root,
+      target: interaction.target
+    });
+    if (context === false) return false;
 
-    if (result.interaction) {
-      const context = result.interaction.begin?.({
+    state[`${kind}Interaction`] = interaction;
+    state[`${kind}Context`] = context ?? {};
+    state[`${kind}Root`] = result.root;
+    if (kind === 'grab' && result.root?.userData) result.root.userData.heldBy = state;
+    state.grabDistance = THREE.MathUtils.clamp(result.hit.distance, 0.2, maxGrabDistance);
+    return true;
+  }
+
+  function finishInteraction(state, kind) {
+    const interaction = state[`${kind}Interaction`];
+    if (!interaction) return;
+    const root = state[`${kind}Root`];
+    try {
+      interaction.end?.({
         controller: state.controller,
         inputSource: state.inputSource,
         handedness: state.handedness,
-        hit: result.hit,
-        root: result.root,
-        target: result.interaction.target
+        context: state[`${kind}Context`],
+        root,
+        target: interaction.target
       });
-      if (context === false) return;
-
-      state.interaction = result.interaction;
-      state.interactionContext = context ?? {};
-      state.interactionRoot = result.root;
-      result.root.userData.heldBy = state;
-      state.highlight.material.color.setHex(0x7dffb2);
-      return;
+    } catch (error) {
+      console.error(`${kind} interaction ${interaction.id} failed while ending`, error);
+    } finally {
+      if (kind === 'grab' && root?.userData.heldBy === state) root.userData.heldBy = null;
+      state[`${kind}Interaction`] = null;
+      state[`${kind}Context`] = null;
+      state[`${kind}Root`] = null;
+      state.highlight.visible = false;
     }
-
-    state.grabbed = result.root;
-    state.grabbed.userData.heldBy = state;
-    state.highlight.material.color.setHex(0x7dffb2);
-    setStatus('Object locked · stick left/right rotates · stick up/down changes reach · release trigger to place');
   }
 
-  function finishGrab(state) {
-    if (state.interaction) {
-      const interaction = state.interaction;
-      const root = state.interactionRoot;
-      try {
-        interaction.end?.({
-          controller: state.controller,
-          inputSource: state.inputSource,
-          handedness: state.handedness,
-          context: state.interactionContext,
-          root,
-          target: interaction.target
-        });
-      } catch (error) {
-        console.error(`Grab interaction ${interaction.id} failed while ending`, error);
-      } finally {
-        if (root?.userData.heldBy === state) root.userData.heldBy = null;
-        state.interaction = null;
-        state.interactionContext = null;
-        state.interactionRoot = null;
-        state.highlight.visible = false;
-      }
-      return;
-    }
+  function beginUse(state) {
+    if (!controllerModes?.isPointing?.(state.handedness)) return;
+    if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
+    beginInteraction(state, 'use', findInteractionHit(state, useInteractions, 'useInteraction'));
+  }
 
-    if (!state.grabbed) return;
-    savePlacement(state.grabbed);
-    state.grabbed.userData.heldBy = null;
-    state.grabbed = null;
+  function finishUse(state) {
+    finishInteraction(state, 'use');
+  }
+
+  function beginGameplayGrab(state) {
+    if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
+    const result = findInteractionHit(state, grabInteractions, 'grabInteraction');
+    if (beginInteraction(state, 'grab', result)) {
+      state.highlight.material.color.setHex(COLOUR_GRAB);
+    }
+  }
+
+  function finishGameplayGrab(state) {
+    finishInteraction(state, 'grab');
+  }
+
+  function beginPlacement(state) {
+    if (!controllerModes?.isDecorationMode?.()) return;
+    if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
+    const result = findPlaceableHit(state);
+    if (!result) return;
+
+    state.placementGrabbed = result.root;
+    state.grabDistance = THREE.MathUtils.clamp(result.hit.distance, 0.65, maxGrabDistance);
+    state.placementGrabbed.userData.heldBy = state;
+    state.highlight.material.color.setHex(COLOUR_DECOR);
+    setStatus('Decorating · hold B/Y · stick left/right rotates · stick up/down changes reach');
+  }
+
+  function finishPlacement(state) {
+    if (!state.placementGrabbed) return;
+    savePlacement(state.placementGrabbed);
+    state.placementGrabbed.userData.heldBy = null;
+    state.placementGrabbed = null;
     state.highlight.visible = false;
-    setStatus('Point at an object and hold trigger to move it · release trigger to place');
+    setStatus('Decorating mode · hold B/Y on furniture to move it');
+  }
+
+  function finishEverything(state) {
+    finishUse(state);
+    finishGameplayGrab(state);
+    finishPlacement(state);
   }
 
   function setWorldPosition(root, position) {
@@ -255,13 +311,15 @@ export function createPlacementSystem({
 
   for (const controller of controllers) {
     const pointer = new THREE.Line(pointerGeometry, new THREE.LineBasicMaterial({
-      color: 0xb9dfff, transparent: true, opacity: 0.78
+      color: COLOUR_USE,
+      transparent: true,
+      opacity: 0.78
     }));
     pointer.scale.z = 6;
     pointer.visible = false;
     controller.add(pointer);
 
-    const highlight = new THREE.Box3Helper(new THREE.Box3(), 0x7dc8ff);
+    const highlight = new THREE.Box3Helper(new THREE.Box3(), COLOUR_USE);
     highlight.visible = false;
     scene.add(highlight);
 
@@ -271,13 +329,14 @@ export function createPlacementSystem({
       highlight,
       inputSource: null,
       handedness: '',
-      hovered: null,
-      hoveredTarget: null,
-      grabbed: null,
-      interaction: null,
-      interactionContext: null,
-      interactionRoot: null,
-      grabDistance: 2
+      grabDistance: 2,
+      useInteraction: null,
+      useContext: null,
+      useRoot: null,
+      grabInteraction: null,
+      grabContext: null,
+      grabRoot: null,
+      placementGrabbed: null
     };
 
     controller.addEventListener('connected', (event) => {
@@ -285,101 +344,135 @@ export function createPlacementSystem({
       state.handedness = event.data.handedness || '';
     });
     controller.addEventListener('disconnected', () => {
-      finishGrab(state);
+      finishEverything(state);
       state.inputSource = null;
       state.handedness = '';
     });
-    controller.addEventListener('selectstart', () => beginGrab(state));
-    controller.addEventListener('selectend', () => finishGrab(state));
+    controller.addEventListener('selectstart', () => beginUse(state));
+    controller.addEventListener('selectend', () => finishUse(state));
+    controller.addEventListener('squeezestart', () => beginGameplayGrab(state));
+    controller.addEventListener('squeezeend', () => finishGameplayGrab(state));
     states.push(state);
   }
 
+  function updateActiveInteraction(state, kind, dt) {
+    const interaction = state[`${kind}Interaction`];
+    if (!interaction) return false;
+    try {
+      interaction.update?.({
+        dt,
+        controller: state.controller,
+        inputSource: state.inputSource,
+        handedness: state.handedness,
+        context: state[`${kind}Context`],
+        root: state[`${kind}Root`],
+        target: interaction.target
+      });
+    } catch (error) {
+      console.error(`${kind} interaction ${interaction.id} failed while updating`, error);
+      finishInteraction(state, kind);
+      return false;
+    }
+
+    state.pointer.visible = true;
+    state.pointer.scale.z = state.grabDistance;
+    state.pointer.material.color.setHex(kind === 'grab' ? COLOUR_GRAB : COLOUR_USE);
+    state.highlight.material.color.setHex(kind === 'grab' ? COLOUR_GRAB : COLOUR_USE);
+    state.highlight.box.setFromObject(interaction.target);
+    state.highlight.visible = true;
+    return true;
+  }
+
+  function updatePlacement(state, dt) {
+    const root = state.placementGrabbed;
+    if (!root) return false;
+
+    const stick = thumbstick(state.inputSource);
+    const rotate = deadzone(stick.x);
+    const reach = deadzone(stick.y);
+    state.grabDistance = THREE.MathUtils.clamp(
+      state.grabDistance - reach * 2.2 * dt,
+      0.65,
+      maxGrabDistance
+    );
+    root.rotation.y -= rotate * 1.65 * dt;
+
+    const ray = getControllerRay(state);
+    target.copy(ray.origin).addScaledVector(ray.direction, state.grabDistance);
+    root.updateWorldMatrix(true, true);
+    objectBounds.setFromObject(root);
+    objectBounds.getSize(objectSize);
+
+    if (bounds && root.userData.confineToBounds) {
+      const halfX = objectSize.x * 0.5;
+      const halfZ = objectSize.z * 0.5;
+      target.x = THREE.MathUtils.clamp(target.x, bounds.minX + halfX, bounds.maxX - halfX);
+      target.z = THREE.MathUtils.clamp(target.z, bounds.minZ + halfZ, bounds.maxZ - halfZ);
+    }
+
+    target.y = root.userData.placementFloorY + root.userData.placementFloorLift;
+    setWorldPosition(root, target);
+    root.updateWorldMatrix(true, true);
+
+    state.pointer.visible = true;
+    state.pointer.scale.z = state.grabDistance;
+    state.pointer.material.color.setHex(COLOUR_DECOR);
+    state.highlight.material.color.setHex(COLOUR_DECOR);
+    state.highlight.box.setFromObject(root);
+    state.highlight.visible = true;
+    return true;
+  }
+
+  function showIdleTarget(state) {
+    const pointing = controllerModes?.isPointing?.(state.handedness) ?? false;
+    const decorationMode = controllerModes?.isDecorationMode?.() ?? false;
+    const gripButton = state.inputSource?.gamepad?.buttons?.[1];
+    const gripAiming = Boolean(gripButton?.touched || (gripButton?.value ?? 0) > 0.02);
+
+    let result = null;
+    let colour = COLOUR_USE;
+
+    if (pointing) {
+      result = findInteractionHit(state, useInteractions, 'useInteraction');
+      colour = COLOUR_USE;
+    } else if (gripAiming) {
+      result = findInteractionHit(state, grabInteractions, 'grabInteraction');
+      colour = COLOUR_GRAB;
+    } else if (decorationMode) {
+      result = findPlaceableHit(state);
+      colour = COLOUR_DECOR;
+    }
+
+    state.pointer.visible = renderer.xr.isPresenting && (pointing || gripAiming || decorationMode);
+    state.pointer.scale.z = result ? result.hit.distance : 6;
+    state.pointer.material.color.setHex(colour);
+
+    if (result?.highlightObject) {
+      state.highlight.material.color.setHex(colour);
+      state.highlight.box.setFromObject(result.highlightObject);
+      state.highlight.visible = true;
+    } else {
+      state.highlight.visible = false;
+    }
+  }
+
   function update(dt) {
-    const enabled = placeables.length > 0;
-
     for (const state of states) {
-      state.pointer.visible = renderer.xr.isPresenting && enabled;
-      if (!enabled) {
-        state.highlight.visible = false;
-        continue;
-      }
+      const modeState = controllerModes?.getState?.(state.handedness);
+      if (modeState?.secondaryPressed) beginPlacement(state);
+      if (modeState?.secondaryReleased) finishPlacement(state);
 
-      if (state.interaction) {
-        try {
-          state.interaction.update?.({
-            dt,
-            controller: state.controller,
-            inputSource: state.inputSource,
-            handedness: state.handedness,
-            context: state.interactionContext,
-            root: state.interactionRoot,
-            target: state.interaction.target
-          });
-        } catch (error) {
-          console.error(`Grab interaction ${state.interaction.id} failed while updating`, error);
-          finishGrab(state);
-          continue;
-        }
-
-        state.pointer.scale.z = state.grabDistance;
-        state.pointer.material.color.setHex(0x7dffb2);
-        state.highlight.box.setFromObject(state.interaction.target);
-        state.highlight.visible = true;
-        continue;
-      }
-
-      if (state.grabbed) {
-        const root = state.grabbed;
-        const stick = thumbstick(state.inputSource);
-        const rotate = deadzone(stick.x);
-        const reach = deadzone(stick.y);
-        state.grabDistance = THREE.MathUtils.clamp(
-          state.grabDistance - reach * 2.2 * dt, 0.65, maxGrabDistance
-        );
-        root.rotation.y -= rotate * 1.65 * dt;
-
-        const ray = getControllerRay(state);
-        target.copy(ray.origin).addScaledVector(ray.direction, state.grabDistance);
-        root.updateWorldMatrix(true, true);
-        objectBounds.setFromObject(root);
-        objectBounds.getSize(objectSize);
-
-        if (bounds && root.userData.confineToBounds) {
-          const halfX = objectSize.x * 0.5;
-          const halfZ = objectSize.z * 0.5;
-          target.x = THREE.MathUtils.clamp(target.x, bounds.minX + halfX, bounds.maxX - halfX);
-          target.z = THREE.MathUtils.clamp(target.z, bounds.minZ + halfZ, bounds.maxZ - halfZ);
-        }
-
-        target.y = root.userData.placementFloorY + root.userData.placementFloorLift;
-        setWorldPosition(root, target);
-        root.updateWorldMatrix(true, true);
-        state.pointer.scale.z = state.grabDistance;
-        state.pointer.material.color.setHex(0x7dffb2);
-        state.highlight.box.setFromObject(root);
-        state.highlight.visible = true;
-        continue;
-      }
-
-      const result = findHit(state);
-      state.hovered = result?.root || null;
-      state.hoveredTarget = result?.highlightObject || null;
-      state.pointer.scale.z = result ? result.hit.distance : 6;
-      state.pointer.material.color.setHex(result ? 0x7dc8ff : 0xb9dfff);
-
-      if (state.hoveredTarget) {
-        state.highlight.material.color.setHex(0x7dc8ff);
-        state.highlight.box.setFromObject(state.hoveredTarget);
-        state.highlight.visible = true;
-      } else {
-        state.highlight.visible = false;
-      }
+      if (updateActiveInteraction(state, 'grab', dt)) continue;
+      if (updateActiveInteraction(state, 'use', dt)) continue;
+      if (updatePlacement(state, dt)) continue;
+      showIdleTarget(state);
     }
   }
 
   function isHandBusy(handedness) {
     return states.some((state) =>
-      (state.grabbed || state.interaction) && state.handedness === handedness
+      (state.placementGrabbed || state.grabInteraction || state.useInteraction) &&
+      state.handedness === handedness
     );
   }
 
@@ -387,6 +480,7 @@ export function createPlacementSystem({
     registerPlaceable,
     unregisterPlaceable,
     registerGrabInteraction,
+    registerUseInteraction,
     clearSavedPlacement,
     savePlacement,
     update,
