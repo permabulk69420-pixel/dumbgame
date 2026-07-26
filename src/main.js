@@ -7,6 +7,7 @@ import { createVRHands } from './hands.js?v=6';
 import { loadDecorAssets } from './assets.js?v=2';
 import { loadPistol } from './weapons/pistol.js?v=2';
 import { loadTorch } from './tools/torch.js?v=3';
+import { createApartmentEntryDoor } from './doors/apartment-entry-door.js?v=1';
 import { GAME_TIME, INTERACTION } from './config.js?v=2';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
@@ -51,6 +52,16 @@ const placement = createPlacementSystem({
   controllerModes,
   floorY: house.floorY,
   bounds: house.bounds,
+  statusElement: status
+});
+
+const entryDoor = createApartmentEntryDoor({
+  parent: house.root,
+  placement,
+  collisionSegments: house.collisionSegments,
+  controllerModes,
+  floorY: house.floorY,
+  materials,
   statusElement: status
 });
 
@@ -135,7 +146,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
   status.textContent =
-    'Grip picks up pistol or torch · A/X points with a free hand · poke the torch button with its index finger';
+    'Grip door handles to push or pull · grip picks up pistol or torch · A/X points with a free hand';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -145,7 +156,7 @@ world.renderer.xr.addEventListener('sessionend', () => {
   status.textContent = 'Quest: left stick moves, right stick turns smoothly. No snap turning.';
 });
 
-// Stable hooks for future beds, computers, doors, story scripts and temporary decorating tools.
+// Stable hooks for beds, computers, doors, story scripts and temporary decorating tools.
 window.game = {
   readState: gameState.read,
   setFlag: gameState.setFlag,
@@ -161,6 +172,9 @@ window.game = {
   setDecorationMode: controllerModes.setDecorationMode,
   isDecorationMode: controllerModes.isDecorationMode,
   setPointing: controllerModes.setPointing,
+  setEntryDoorLocked: entryDoor.setLocked,
+  setEntryDoorAngle: entryDoor.setAngle,
+  getEntryDoorAngle: entryDoor.getAngle,
   resetGameState: gameState.reset
 };
 
@@ -186,6 +200,7 @@ world.renderer.setAnimationLoop((time) => {
   decor.update(dt);
   pistol.update(dt);
   torch.update(dt);
+  entryDoor.update(dt);
 
   if (world.renderer.xr.isPresenting) {
     locomotion.update(dt);
