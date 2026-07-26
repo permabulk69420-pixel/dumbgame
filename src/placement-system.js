@@ -16,6 +16,7 @@ export function createPlacementSystem({
 }) {
   const placeables = [];
   const states = [];
+  const grabInteractions = new Set();
   const raycaster = new THREE.Raycaster();
   const rotationMatrix = new THREE.Matrix4();
   const origin = new THREE.Vector3();
@@ -67,6 +68,16 @@ export function createPlacementSystem({
     return null;
   }
 
+  function resolveGrabInteraction(object) {
+    let current = object;
+    while (current) {
+      const interaction = current.userData.grabInteraction;
+      if (interaction && grabInteractions.has(interaction)) return interaction;
+      current = current.parent;
+    }
+    return null;
+  }
+
   function registerPlaceable(root, id, options = {}) {
     if (!root || !id) throw new Error('registerPlaceable(root, id) requires both values');
     const duplicate = placeables.find((item) => item.userData.placementId === id);
@@ -102,6 +113,33 @@ export function createPlacementSystem({
     });
   }
 
+  function registerGrabInteraction(interactionRoot, handlers = {}) {
+    if (!interactionRoot?.traverse) {
+      throw new Error('registerGrabInteraction requires an Object3D interaction root');
+    }
+
+    const record = {
+      id: handlers.id || interactionRoot.uuid,
+      label: handlers.label || interactionRoot.name || 'interaction',
+      target: interactionRoot,
+      begin: handlers.begin,
+      update: handlers.update,
+      end: handlers.end
+    };
+
+    grabInteractions.add(record);
+    interactionRoot.traverse((child) => {
+      child.userData.grabInteraction = record;
+    });
+
+    return () => {
+      grabInteractions.delete(record);
+      interactionRoot.traverse((child) => {
+        if (child.userData.grabInteraction === record) delete child.userData.grabInteraction;
+      });
+    };
+  }
+
   function clearSavedPlacement(id) {
     delete saved[id];
     persist();
@@ -121,25 +159,83 @@ export function createPlacementSystem({
     raycaster.near = 0.05;
     raycaster.far = maxRayDistance;
     const hits = raycaster.intersectObjects(placeables, true);
+
     for (const hit of hits) {
       const root = resolvePlaceable(hit.object);
-      if (root && (!root.userData.heldBy || root.userData.heldBy === state)) return { root, hit };
+      if (!root || (root.userData.heldBy && root.userData.heldBy !== state)) continue;
+
+      const interaction = resolveGrabInteraction(hit.object);
+      if (interaction) {
+        return {
+          root,
+          hit,
+          interaction,
+          highlightObject: interaction.target
+        };
+      }
+
+      return { root, hit, interaction: null, highlightObject: root };
     }
     return null;
   }
 
   function beginGrab(state) {
-    if (state.grabbed) return;
+    if (state.grabbed || state.interaction) return;
     const result = findHit(state);
     if (!result) return;
-    state.grabbed = result.root;
+
     state.grabDistance = THREE.MathUtils.clamp(result.hit.distance, 0.65, maxGrabDistance);
+
+    if (result.interaction) {
+      const context = result.interaction.begin?.({
+        controller: state.controller,
+        inputSource: state.inputSource,
+        handedness: state.handedness,
+        hit: result.hit,
+        root: result.root,
+        target: result.interaction.target
+      });
+      if (context === false) return;
+
+      state.interaction = result.interaction;
+      state.interactionContext = context ?? {};
+      state.interactionRoot = result.root;
+      result.root.userData.heldBy = state;
+      state.highlight.material.color.setHex(0x7dffb2);
+      return;
+    }
+
+    state.grabbed = result.root;
     state.grabbed.userData.heldBy = state;
     state.highlight.material.color.setHex(0x7dffb2);
     setStatus('Object locked · stick left/right rotates · stick up/down changes reach · release trigger to place');
   }
 
   function finishGrab(state) {
+    if (state.interaction) {
+      const interaction = state.interaction;
+      const root = state.interactionRoot;
+      try {
+        interaction.end?.({
+          controller: state.controller,
+          inputSource: state.inputSource,
+          handedness: state.handedness,
+          context: state.interactionContext,
+          root,
+          target: interaction.target
+        });
+      } catch (error) {
+        console.error(`Grab interaction ${interaction.id} failed while ending`, error);
+      } finally {
+        if (root?.userData.heldBy === state) root.userData.heldBy = null;
+        state.interaction = null;
+        state.interactionContext = null;
+        state.interactionRoot = null;
+        state.highlight.visible = false;
+      }
+      return;
+    }
+
     if (!state.grabbed) return;
     savePlacement(state.grabbed);
     state.grabbed.userData.heldBy = null;
@@ -170,9 +266,20 @@ export function createPlacementSystem({
     scene.add(highlight);
 
     const state = {
-      controller, pointer, highlight, inputSource: null, handedness: '',
-      hovered: null, grabbed: null, grabDistance: 2
+      controller,
+      pointer,
+      highlight,
+      inputSource: null,
+      handedness: '',
+      hovered: null,
+      hoveredTarget: null,
+      grabbed: null,
+      interaction: null,
+      interactionContext: null,
+      interactionRoot: null,
+      grabDistance: 2
     };
+
     controller.addEventListener('connected', (event) => {
       state.inputSource = event.data;
       state.handedness = event.data.handedness || '';
@@ -189,10 +296,35 @@ export function createPlacementSystem({
 
   function update(dt) {
     const enabled = placeables.length > 0;
+
     for (const state of states) {
       state.pointer.visible = renderer.xr.isPresenting && enabled;
       if (!enabled) {
         state.highlight.visible = false;
+        continue;
+      }
+
+      if (state.interaction) {
+        try {
+          state.interaction.update?.({
+            dt,
+            controller: state.controller,
+            inputSource: state.inputSource,
+            handedness: state.handedness,
+            context: state.interactionContext,
+            root: state.interactionRoot,
+            target: state.interaction.target
+          });
+        } catch (error) {
+          console.error(`Grab interaction ${state.interaction.id} failed while updating`, error);
+          finishGrab(state);
+          continue;
+        }
+
+        state.pointer.scale.z = state.grabDistance;
+        state.pointer.material.color.setHex(0x7dffb2);
+        state.highlight.box.setFromObject(state.interaction.target);
+        state.highlight.visible = true;
         continue;
       }
 
@@ -231,11 +363,13 @@ export function createPlacementSystem({
 
       const result = findHit(state);
       state.hovered = result?.root || null;
+      state.hoveredTarget = result?.highlightObject || null;
       state.pointer.scale.z = result ? result.hit.distance : 6;
       state.pointer.material.color.setHex(result ? 0x7dc8ff : 0xb9dfff);
-      if (state.hovered) {
+
+      if (state.hoveredTarget) {
         state.highlight.material.color.setHex(0x7dc8ff);
-        state.highlight.box.setFromObject(state.hovered);
+        state.highlight.box.setFromObject(state.hoveredTarget);
         state.highlight.visible = true;
       } else {
         state.highlight.visible = false;
@@ -244,12 +378,15 @@ export function createPlacementSystem({
   }
 
   function isHandBusy(handedness) {
-    return states.some((state) => state.grabbed && state.handedness === handedness);
+    return states.some((state) =>
+      (state.grabbed || state.interaction) && state.handedness === handedness
+    );
   }
 
   return {
     registerPlaceable,
     unregisterPlaceable,
+    registerGrabInteraction,
     clearSavedPlacement,
     savePlacement,
     update,
