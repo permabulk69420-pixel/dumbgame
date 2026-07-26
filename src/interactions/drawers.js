@@ -9,13 +9,22 @@ export function createDrawerAnimations(root, clips = []) {
     action.play();
     action.paused = true;
     action.clampWhenFinished = true;
-    action.weight = 1;
+    action.weight = 0;
     actions.set(clip.name, action);
   }
 
   function setAmount(nodeName, amount) {
     const action = actions.get(`${nodeName}_Open`);
     if (!action) return false;
+    action.weight = 1;
+    action.time = THREE.MathUtils.clamp(amount, 0, 1);
+    return true;
+  }
+
+  function setAllAmount(amount) {
+    const action = actions.get('All_Open');
+    if (!action) return false;
+    action.weight = 1;
     action.time = THREE.MathUtils.clamp(amount, 0, 1);
     return true;
   }
@@ -25,5 +34,5 @@ export function createDrawerAnimations(root, clips = []) {
     mixer.update(dt);
   }
 
-  return { mixer, actions, setAmount, update };
+  return { mixer, actions, setAmount, setAllAmount, update };
 }
