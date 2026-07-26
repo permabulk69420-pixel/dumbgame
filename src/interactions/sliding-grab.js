@@ -42,7 +42,7 @@ export function registerSlidingDeskInteractions({
         controller.getWorldPosition(controllerStart);
 
         if (statusElement) {
-          statusElement.textContent = `Pull the ${config.label} · release trigger to leave it in place`;
+          statusElement.textContent = `Grip and pull the ${config.label} · release grip to leave it in place`;
         }
 
         return {
@@ -69,7 +69,8 @@ export function registerSlidingDeskInteractions({
       end() {
         drawerAnimations.save();
         if (statusElement) {
-          statusElement.textContent = 'Point at a drawer and hold trigger to pull it · point at the desk body to move the desk';
+          statusElement.textContent =
+            'Grip drawers to pull them · A/X toggles pointing for buttons · B/Y is temporary decorating';
         }
       }
     });
