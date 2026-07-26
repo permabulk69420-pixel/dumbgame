@@ -5,14 +5,34 @@ import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js';
 import { loadDecorAssets } from './assets.js';
+import { GAME_TIME } from './config.js';
+import { createGameState } from './state/game-state.js';
+import { createGameClock } from './time/game-clock.js';
+import { createDayNightCycle } from './time/day-night-cycle.js';
+import { createEventScheduler } from './story/event-scheduler.js';
 
 const app = document.getElementById('app');
 const loading = document.getElementById('loading');
+const title = document.getElementById('title');
 const status = document.getElementById('status');
 
 const world = createWorld(app);
 const materials = createMaterials();
 const house = createHouse(world.scene, materials);
+
+const gameState = createGameState();
+const clock = createGameClock({
+  gameState,
+  realSecondsPerDay: GAME_TIME.realSecondsPerDay
+});
+const dayNight = createDayNightCycle({
+  scene: world.scene,
+  renderer: world.renderer,
+  lights: world.lights,
+  houseRoot: house.root,
+  gameState
+});
+const events = createEventScheduler({ gameState });
 
 const placement = createPlacementSystem({
   scene: world.scene,
@@ -33,6 +53,17 @@ const locomotion = createLocomotion({
 
 let hands = { update() {} };
 let decor = { update() {} };
+let displayedClockKey = '';
+
+function refreshClockLabel(state) {
+  const wholeMinute = Math.floor(state.minuteOfDay);
+  const key = `${state.day}:${wholeMinute}`;
+  if (key === displayedClockKey) return;
+  displayedClockKey = key;
+  title.textContent = `Day ${state.day} · ${clock.formatTime(state.minuteOfDay)}`;
+}
+
+gameState.subscribe(refreshClockLabel, { immediate: true });
 
 createVRHands({
   controllers: world.controllers,
@@ -61,8 +92,27 @@ world.renderer.xr.addEventListener('sessionstart', () => {
 world.renderer.xr.addEventListener('sessionend', () => {
   world.rig.position.set(0, 0, 0);
   world.rig.rotation.set(0, 0, 0);
+  gameState.save();
   status.textContent = 'Quest: left stick moves, right stick turns smoothly. No snap turning.';
 });
+
+// Stable hooks for future beds, computers, doors and story scripts.
+window.game = {
+  readState: gameState.read,
+  setFlag: gameState.setFlag,
+  clearFlag: gameState.clearFlag,
+  setStoryPhase: gameState.setStoryPhase,
+  completeEvent: gameState.completeEvent,
+  registerEvent: events.register,
+  setTime: clock.setTime,
+  skipMinutes: clock.skipMinutes,
+  sleepToNextDay: () => clock.sleepToNextDay(GAME_TIME.sleepHour, GAME_TIME.sleepMinute),
+  setTimeScale: clock.setTimeScale,
+  pauseTime: clock.setPaused,
+  resetGameState: gameState.reset
+};
+
+window.addEventListener('pagehide', () => gameState.save());
 
 loading.remove();
 let lastTime = performance.now();
@@ -71,6 +121,11 @@ let previewAngle = 0.5;
 world.renderer.setAnimationLoop((time) => {
   const dt = Math.min(0.05, (time - lastTime) / 1000);
   lastTime = time;
+
+  const advanceClock = GAME_TIME.advanceOnlyInXR ? world.renderer.xr.isPresenting : true;
+  clock.update(dt, advanceClock);
+  dayNight.update(dt);
+  events.update({ world, house, placement, clock });
 
   placement.update(dt);
   hands.update(dt);
