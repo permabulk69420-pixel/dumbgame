@@ -4,65 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#11171a">
-  <title>VR House Walkthrough</title>
+  <title>VR Cottage Walkthrough</title>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    body {
-      background: #11171a;
-      color: #edf2f3;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
+    body { background: #11171a; color: #edf2f3; font-family: system-ui, sans-serif; }
     #app { position: relative; width: 100%; height: 100%; }
     canvas { display: block; width: 100%; height: 100%; }
     #panel {
-      position: absolute;
-      top: max(14px, env(safe-area-inset-top));
-      left: max(14px, env(safe-area-inset-left));
-      z-index: 3;
-      max-width: min(430px, calc(100% - 28px));
-      padding: 12px 14px;
-      border: 1px solid rgba(255,255,255,.16);
-      border-radius: 14px;
-      background: rgba(12,17,20,.78);
-      backdrop-filter: blur(10px);
-      pointer-events: none;
+      position: absolute; top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left));
+      z-index: 3; max-width: min(470px, calc(100% - 28px)); padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,.16); border-radius: 14px;
+      background: rgba(12,17,20,.8); backdrop-filter: blur(10px); pointer-events: none;
     }
-    #title { font-size: 15px; font-weight: 750; letter-spacing: .02em; }
+    #title { font-size: 15px; font-weight: 750; }
     #status { margin-top: 4px; font-size: 13px; color: #b8c5c9; line-height: 1.4; }
-    #loading {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      z-index: 2;
-      color: #c7d2d5;
-      background: #11171a;
-    }
+    #loading { position:absolute; inset:0; display:grid; place-items:center; z-index:2; background:#11171a; color:#c7d2d5; }
     #app button {
-      position: absolute !important;
-      left: max(16px, env(safe-area-inset-left)) !important;
-      bottom: max(16px, env(safe-area-inset-bottom)) !important;
-      width: auto !important;
-      height: 48px !important;
-      min-width: 145px;
-      padding: 0 18px !important;
-      border: 1px solid rgba(255,255,255,.32) !important;
-      border-radius: 13px !important;
-      background: rgba(24,32,36,.92) !important;
-      color: #fff !important;
-      font: 700 14px system-ui !important;
-      opacity: 1 !important;
-      z-index: 5 !important;
+      position:absolute !important; left:max(16px,env(safe-area-inset-left)) !important;
+      bottom:max(16px,env(safe-area-inset-bottom)) !important; width:auto !important; min-width:145px;
+      height:48px !important; padding:0 18px !important; border:1px solid rgba(255,255,255,.32) !important;
+      border-radius:13px !important; background:rgba(24,32,36,.94) !important; color:#fff !important;
+      font:700 14px system-ui !important; opacity:1 !important; z-index:5 !important;
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <div id="loading">Building house…</div>
+    <div id="loading">Building dimensioned cottage…</div>
     <div id="panel">
-      <div id="title">Single-storey VR house</div>
-      <div id="status">Open this page in the Quest Browser and press Enter VR. Left stick moves; right stick turns smoothly.</div>
+      <div id="title">33 × 37 ft three-bedroom cottage</div>
+      <div id="status">Quest: left stick moves, right stick turns smoothly. No snap turning.</div>
     </div>
   </div>
 
@@ -75,12 +47,12 @@
     const status = document.getElementById('status');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x9fb7c2);
-    scene.fog = new THREE.Fog(0x9fb7c2, 30, 70);
+    scene.background = new THREE.Color(0x9fb8c2);
+    scene.fog = new THREE.Fog(0x9fb8c2, 28, 65);
 
-    const camera = new THREE.PerspectiveCamera(54, 1, 0.05, 120);
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 120);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -100,9 +72,8 @@
     scene.add(rig);
     rig.add(camera);
 
-    scene.add(new THREE.HemisphereLight(0xf4f8fa, 0x665746, 1.8));
-
-    const sun = new THREE.DirectionalLight(0xffeed6, 2.6);
+    scene.add(new THREE.HemisphereLight(0xf5f9fb, 0x675948, 1.75));
+    const sun = new THREE.DirectionalLight(0xffefd8, 2.5);
     sun.position.set(10, 18, 8);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -111,163 +82,101 @@
     sun.shadow.camera.top = 20;
     sun.shadow.camera.bottom = -20;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 48;
+    sun.shadow.camera.far = 50;
     scene.add(sun);
-
-    const coolFill = new THREE.DirectionalLight(0x91adc1, 0.55);
-    coolFill.position.set(-12, 8, -13);
-    scene.add(coolFill);
+    const fill = new THREE.DirectionalLight(0x91adc1, 0.55);
+    fill.position.set(-12, 8, -13);
+    scene.add(fill);
 
     const MAT = {
-      plaster: new THREE.MeshStandardMaterial({ color: 0xd9d1c4, roughness: 0.92 }),
+      outer: new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.92 }),
       inner: new THREE.MeshStandardMaterial({ color: 0xc8c0b4, roughness: 0.94 }),
-      floor: new THREE.MeshStandardMaterial({ color: 0x75695d, roughness: 0.97 }),
-      tile: new THREE.MeshStandardMaterial({ color: 0x7b807f, roughness: 0.94 }),
-      foundation: new THREE.MeshStandardMaterial({ color: 0x464b4d, roughness: 1 }),
-      frame: new THREE.MeshStandardMaterial({ color: 0x34393b, roughness: 0.75 }),
-      timber: new THREE.MeshStandardMaterial({ color: 0x4c3c30, roughness: 0.84 }),
-      glass: new THREE.MeshPhysicalMaterial({
-        color: 0xb8d5de,
-        roughness: 0.14,
-        transparent: true,
-        opacity: 0.38,
-        transmission: 0.22,
-        side: THREE.DoubleSide
-      }),
+      floor: new THREE.MeshStandardMaterial({ color: 0x806f5f, roughness: 0.97 }),
+      tile: new THREE.MeshStandardMaterial({ color: 0x858b89, roughness: 0.96 }),
+      foundation: new THREE.MeshStandardMaterial({ color: 0x454a4c, roughness: 1 }),
+      frame: new THREE.MeshStandardMaterial({ color: 0x34393b, roughness: 0.76 }),
+      timber: new THREE.MeshStandardMaterial({ color: 0x4b3a2e, roughness: 0.86 }),
+      glass: new THREE.MeshPhysicalMaterial({ color: 0xb9d7df, roughness: 0.15, transparent: true, opacity: 0.38, transmission: 0.2, side: THREE.DoubleSide }),
       grass: new THREE.MeshStandardMaterial({ color: 0x59694f, roughness: 1 }),
-      path: new THREE.MeshStandardMaterial({ color: 0x77766f, roughness: 1 })
+      concrete: new THREE.MeshStandardMaterial({ color: 0x77766f, roughness: 1 })
     };
+
+    const F = 0.3048;
+    const WIDTH = 33 * F;
+    const DEPTH = 32 * F;
+    const PORCH_DEPTH = 5 * F;
+    const WALL_H = 2.72;
+    const WALL_T = 0.17;
+    const SLAB_H = 0.14;
+    const PLAYER_R = 0.25;
+
+    const xL = -WIDTH / 2;
+    const xR = WIDTH / 2;
+    const zF = -DEPTH / 2;
+    const zB = DEPTH / 2;
+    const xBedroomWall = xL + 14 * F;
+    const xHallWall = xBedroomWall + 4 * F;
+    const zBedroomOne = zF + 10 * F;
+    const zBedroomTwo = zF + 20 * F;
+    const zLivingKitchen = zF + 16 * F;
 
     const house = new THREE.Group();
     scene.add(house);
-
-    const WALL_HEIGHT = 2.72;
-    const WALL_THICKNESS = 0.17;
-    const SLAB_HEIGHT = 0.14;
-    const PLAYER_RADIUS = 0.27;
     const collisionSegments = [];
 
-    // One continuous, slightly irregular house footprint.
-    const footprint = [
-      [-7.0, -5.0],
-      [ 7.0, -5.0],
-      [ 7.0,  5.0],
-      [ 2.4,  5.0],
-      [ 2.4,  6.15],
-      [-1.4,  6.15],
-      [-1.4,  5.0],
-      [-7.0,  5.0]
-    ];
-
-    function makeFootprintShape() {
-      const shape = new THREE.Shape();
-      shape.moveTo(footprint[0][0], -footprint[0][1]);
-      for (let i = 1; i < footprint.length; i++) {
-        shape.lineTo(footprint[i][0], -footprint[i][1]);
-      }
-      shape.closePath();
-      return shape;
-    }
-
-    function addFootprintSlab(material, depth, y) {
-      const geometry = new THREE.ExtrudeGeometry(makeFootprintShape(), {
-        depth,
-        bevelEnabled: false,
-        curveSegments: 1
-      });
-      geometry.rotateX(-Math.PI / 2);
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.y = y;
-      mesh.castShadow = true;
+    function box(w, h, d, x, y, z, material, cast = true) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = cast;
       mesh.receiveShadow = true;
       house.add(mesh);
       return mesh;
     }
 
-    addFootprintSlab(MAT.foundation, 0.12, -0.12);
-    addFootprintSlab(MAT.floor, SLAB_HEIGHT, 0);
+    box(WIDTH, 0.12, DEPTH, 0, -0.06, 0, MAT.foundation);
+    box(WIDTH, SLAB_H, DEPTH, 0, SLAB_H / 2, 0, MAT.floor);
+    box(6 * F, 0.018, 7 * F, xHallWall + 3 * F, SLAB_H + 0.012, 0.05, MAT.tile, false);
+    box(15 * F, 0.018, 8 * F, (xHallWall + xR) / 2, SLAB_H + 0.013, zB - 4 * F, MAT.tile, false);
 
-    // A couple of subtle floor-material changes, still one continuous floor plan.
-    function addFloorPatch(x1, z1, x2, z2, material) {
-      const patch = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), material);
-      patch.rotation.x = -Math.PI / 2;
-      patch.position.set((x1 + x2) / 2, SLAB_HEIGHT + 0.008, (z1 + z2) / 2);
-      patch.receiveShadow = true;
-      house.add(patch);
-    }
-
-    addFloorPatch(0.95, 0.12, 3.95, 2.35, MAT.tile);
-    addFloorPatch(-1.18, 5.08, 2.18, 5.97, MAT.tile);
+    box(WIDTH, 0.12, PORCH_DEPTH, 0, 0.02, zF - PORCH_DEPTH / 2, MAT.concrete, false);
+    box(12 * F, 0.12, 10 * F, xR - 6 * F, 0.02, zB + 5 * F, MAT.concrete, false);
 
     function pointAlong(x1, z1, x2, z2, distance) {
       const dx = x2 - x1;
       const dz = z2 - z1;
       const length = Math.hypot(dx, dz);
-      return {
-        x: x1 + (dx / length) * distance,
-        z: z1 + (dz / length) * distance
-      };
+      return { x: x1 + dx / length * distance, z: z1 + dz / length * distance };
     }
 
-    function addCollisionSegment(x1, z1, x2, z2) {
+    function addCollision(x1, z1, x2, z2) {
       collisionSegments.push({ x1, z1, x2, z2 });
     }
 
-    function addWallBox(x1, z1, x2, z2, height = WALL_HEIGHT, y = SLAB_HEIGHT, material = MAT.plaster) {
+    function addWallBox(x1, z1, x2, z2, height = WALL_H, y = SLAB_H, material = MAT.outer) {
       const dx = x2 - x1;
       const dz = z2 - z1;
       const length = Math.hypot(dx, dz);
-      if (length < 0.01 || height < 0.01) return;
-
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(length, height, WALL_THICKNESS),
-        material
-      );
-      mesh.position.set((x1 + x2) / 2, y + height / 2, (z1 + z2) / 2);
+      if (length < 0.005 || height < 0.005) return;
+      const mesh = box(length, height, WALL_T, (x1 + x2) / 2, y + height / 2, (z1 + z2) / 2, material);
       mesh.rotation.y = -Math.atan2(dz, dx);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      house.add(mesh);
     }
 
     function addWindow(x1, z1, x2, z2, opening) {
       const centre = pointAlong(x1, z1, x2, z2, opening.at);
       const angle = Math.atan2(z2 - z1, x2 - x1);
       const group = new THREE.Group();
-      group.position.set(
-        centre.x,
-        SLAB_HEIGHT + opening.bottom + opening.height / 2,
-        centre.z
-      );
+      group.position.set(centre.x, SLAB_H + opening.bottom + opening.height / 2, centre.z);
       group.rotation.y = -angle;
 
-      const glass = new THREE.Mesh(
-        new THREE.BoxGeometry(opening.width * 0.91, opening.height * 0.89, 0.03),
-        MAT.glass
-      );
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(opening.width * 0.91, opening.height * 0.88, 0.03), MAT.glass);
       group.add(glass);
-
-      const verticalGeometry = new THREE.BoxGeometry(0.055, opening.height, 0.075);
-      const left = new THREE.Mesh(verticalGeometry, MAT.frame);
-      left.position.x = -opening.width * 0.47;
-      group.add(left);
-
-      const right = left.clone();
-      right.position.x = opening.width * 0.47;
-      group.add(right);
-
-      const horizontalGeometry = new THREE.BoxGeometry(opening.width, 0.055, 0.075);
-      const top = new THREE.Mesh(horizontalGeometry, MAT.frame);
-      top.position.y = opening.height * 0.48;
-      group.add(top);
-
-      const bottom = top.clone();
-      bottom.position.y = -opening.height * 0.48;
-      group.add(bottom);
-
-      const mullion = new THREE.Mesh(verticalGeometry, MAT.frame);
-      group.add(mullion);
-
+      const vGeo = new THREE.BoxGeometry(0.055, opening.height, 0.075);
+      const hGeo = new THREE.BoxGeometry(opening.width, 0.055, 0.075);
+      const left = new THREE.Mesh(vGeo, MAT.frame); left.position.x = -opening.width * 0.47; group.add(left);
+      const right = left.clone(); right.position.x = opening.width * 0.47; group.add(right);
+      const top = new THREE.Mesh(hGeo, MAT.frame); top.position.y = opening.height * 0.48; group.add(top);
+      const bottom = top.clone(); bottom.position.y = -opening.height * 0.48; group.add(bottom);
+      const mullion = new THREE.Mesh(vGeo, MAT.frame); group.add(mullion);
       house.add(group);
     }
 
@@ -275,111 +184,90 @@
       const centre = pointAlong(x1, z1, x2, z2, opening.at);
       const angle = Math.atan2(z2 - z1, x2 - x1);
       const group = new THREE.Group();
-      group.position.set(centre.x, SLAB_HEIGHT, centre.z);
+      group.position.set(centre.x, SLAB_H, centre.z);
       group.rotation.y = -angle;
-
-      const postGeometry = new THREE.BoxGeometry(0.075, opening.height, 0.21);
-      const left = new THREE.Mesh(postGeometry, MAT.timber);
-      left.position.set(-opening.width / 2, opening.height / 2, 0);
-      group.add(left);
-
-      const right = left.clone();
-      right.position.x = opening.width / 2;
-      group.add(right);
-
-      const top = new THREE.Mesh(
-        new THREE.BoxGeometry(opening.width + 0.075, 0.075, 0.21),
-        MAT.timber
-      );
-      top.position.y = opening.height;
-      group.add(top);
-
-      const threshold = new THREE.Mesh(
-        new THREE.BoxGeometry(opening.width, 0.025, 0.2),
-        MAT.timber
-      );
-      threshold.position.y = 0.014;
-      threshold.receiveShadow = true;
-      group.add(threshold);
-
+      const postGeo = new THREE.BoxGeometry(0.07, opening.height, 0.205);
+      const left = new THREE.Mesh(postGeo, MAT.timber); left.position.set(-opening.width / 2, opening.height / 2, 0); group.add(left);
+      const right = left.clone(); right.position.x = opening.width / 2; group.add(right);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(opening.width + 0.07, 0.07, 0.205), MAT.timber); top.position.y = opening.height; group.add(top);
       house.add(group);
     }
 
-    function wallRun(x1, z1, x2, z2, openings = [], material = MAT.plaster) {
+    function wallRun(x1, z1, x2, z2, openings = [], material = MAT.outer) {
       const length = Math.hypot(x2 - x1, z2 - z1);
       const sorted = [...openings].sort((a, b) => (a.at - a.width / 2) - (b.at - b.width / 2));
       let cursor = 0;
-
       for (const opening of sorted) {
         const start = Math.max(0, opening.at - opening.width / 2);
         const end = Math.min(length, opening.at + opening.width / 2);
-
         if (start > cursor) {
           const a = pointAlong(x1, z1, x2, z2, cursor);
           const b = pointAlong(x1, z1, x2, z2, start);
-          addWallBox(a.x, a.z, b.x, b.z, WALL_HEIGHT, SLAB_HEIGHT, material);
-          addCollisionSegment(a.x, a.z, b.x, b.z);
+          addWallBox(a.x, a.z, b.x, b.z, WALL_H, SLAB_H, material);
+          addCollision(a.x, a.z, b.x, b.z);
         }
-
         const a = pointAlong(x1, z1, x2, z2, start);
         const b = pointAlong(x1, z1, x2, z2, end);
-
         if (opening.kind === 'door') {
-          const lintelHeight = WALL_HEIGHT - opening.height;
-          addWallBox(a.x, a.z, b.x, b.z, lintelHeight, SLAB_HEIGHT + opening.height, material);
+          addWallBox(a.x, a.z, b.x, b.z, WALL_H - opening.height, SLAB_H + opening.height, material);
           addDoorFrame(x1, z1, x2, z2, opening);
-          // Deliberately no collision segment across a door opening.
         } else {
-          addWallBox(a.x, a.z, b.x, b.z, opening.bottom, SLAB_HEIGHT, material);
+          addWallBox(a.x, a.z, b.x, b.z, opening.bottom, SLAB_H, material);
           const topStart = opening.bottom + opening.height;
-          addWallBox(a.x, a.z, b.x, b.z, WALL_HEIGHT - topStart, SLAB_HEIGHT + topStart, material);
+          addWallBox(a.x, a.z, b.x, b.z, WALL_H - topStart, SLAB_H + topStart, material);
           addWindow(x1, z1, x2, z2, opening);
-          addCollisionSegment(a.x, a.z, b.x, b.z);
+          addCollision(a.x, a.z, b.x, b.z);
         }
-
         cursor = end;
       }
-
       if (cursor < length) {
         const a = pointAlong(x1, z1, x2, z2, cursor);
         const b = pointAlong(x1, z1, x2, z2, length);
-        addWallBox(a.x, a.z, b.x, b.z, WALL_HEIGHT, SLAB_HEIGHT, material);
-        addCollisionSegment(a.x, a.z, b.x, b.z);
+        addWallBox(a.x, a.z, b.x, b.z, WALL_H, SLAB_H, material);
+        addCollision(a.x, a.z, b.x, b.z);
       }
     }
 
-    const door = (at, width = 0.92) => ({
-      kind: 'door', at, width, height: 2.18
-    });
+    const door = (at, width = 3 * F) => ({ kind: 'door', at, width, height: 2.16 });
+    const wide = (at, width = 4 * F) => ({ kind: 'door', at, width, height: 2.35 });
+    const windowGap = (at, width = 4 * F, bottom = 0.86, height = 1.18) => ({ kind: 'window', at, width, bottom, height });
 
-    const windowGap = (at, width = 1.3, bottom = 0.86, height = 1.16) => ({
-      kind: 'window', at, width, bottom, height
-    });
-
-    // Exterior shell, including real door/window openings.
-    wallRun(-7, -5, 7, -5, [
-      windowGap(1.6, 1.45),
-      windowGap(4.45, 1.45),
-      door(7.0, 1.1),
-      windowGap(9.7, 1.45),
-      windowGap(12.3, 1.25)
+    wallRun(xL, zF, xR, zF, [
+      windowGap(5 * F, 4 * F),
+      door(16 * F, 3 * F),
+      windowGap(23 * F, 5 * F),
+      windowGap(29.5 * F, 3.5 * F)
     ]);
-    wallRun(7, -5, 7, 5, [windowGap(2.0), windowGap(5.15), windowGap(8.1)]);
-    wallRun(7, 5, 2.4, 5, [windowGap(1.5, 1.25)]);
-    wallRun(2.4, 5, 2.4, 6.15);
-    wallRun(2.4, 6.15, -1.4, 6.15, [door(1.05, 0.92), windowGap(2.7, 0.9, 0.95, 1.0)]);
-    wallRun(-1.4, 6.15, -1.4, 5);
-    wallRun(-1.4, 5, -7, 5, [windowGap(1.35, 1.15), windowGap(3.85, 1.4)]);
-    wallRun(-7, 5, -7, -5, [windowGap(1.4), windowGap(4.25), windowGap(7.25)]);
+    wallRun(xR, zF, xR, zB, [windowGap(5 * F), windowGap(13 * F), windowGap(25 * F)]);
+    wallRun(xR, zB, xL, zB, [door(5 * F, 3 * F), windowGap(11 * F), windowGap(26 * F)]);
+    wallRun(xL, zB, xL, zF, [windowGap(5 * F), windowGap(16 * F), windowGap(27 * F)]);
 
-    // Connected internal plan: central hall, four main rooms, bathroom and rear rooms.
-    wallRun(-0.82, -4.0, -0.82, 5, [door(1.65), door(6.25)], MAT.inner);
-    wallRun(0.82, -4.0, 0.82, 5, [door(1.65), door(5.15), door(7.55)], MAT.inner);
-    wallRun(-7, 0, -0.82, 0, [], MAT.inner);
-    wallRun(0.82, 0, 7, 0, [], MAT.inner);
-    wallRun(0.82, 2.45, 7, 2.45, [door(2.0), door(4.7)], MAT.inner);
-    wallRun(4.08, 0, 4.08, 2.45, [door(1.2, 0.86)], MAT.inner);
-    wallRun(-0.82, 5, 0.82, 5, [], MAT.inner);
+    wallRun(xL, zBedroomOne, xBedroomWall, zBedroomOne, [], MAT.inner);
+    wallRun(xL, zBedroomTwo, xBedroomWall, zBedroomTwo, [], MAT.inner);
+    wallRun(xBedroomWall, zF, xBedroomWall, zB, [
+      door(5.3 * F), door(15.2 * F), door(25.6 * F)
+    ], MAT.inner);
+
+    wallRun(xHallWall, zF, xHallWall, zB, [
+      wide(4.4 * F, 4.5 * F),
+      door(15.0 * F, 3 * F),
+      door(21.6 * F, 2.8 * F),
+      wide(27.5 * F, 4.5 * F)
+    ], MAT.inner);
+
+    wallRun(xHallWall + 6 * F, zLivingKitchen, xR, zLivingKitchen, [wide(6.5 * F, 5.5 * F)], MAT.inner);
+
+    const bathRight = xHallWall + 6 * F;
+    const bathFront = zF + 12 * F;
+    const bathBack = zF + 19 * F;
+    wallRun(xHallWall, bathFront, bathRight, bathFront, [], MAT.inner);
+    wallRun(bathRight, bathFront, bathRight, bathBack, [], MAT.inner);
+    wallRun(bathRight, bathBack, xHallWall, bathBack, [], MAT.inner);
+
+    const laundryBack = zF + 25 * F;
+    wallRun(xHallWall, bathBack, xHallWall + 4.5 * F, bathBack, [], MAT.inner);
+    wallRun(xHallWall + 4.5 * F, bathBack, xHallWall + 4.5 * F, laundryBack, [], MAT.inner);
+    wallRun(xHallWall + 4.5 * F, laundryBack, xHallWall, laundryBack, [], MAT.inner);
 
     const outdoors = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), MAT.grass);
     outdoors.rotation.x = -Math.PI / 2;
@@ -387,41 +275,31 @@
     outdoors.receiveShadow = true;
     scene.add(outdoors);
 
-    const frontPath = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.04, 6.0), MAT.path);
-    frontPath.position.set(0, -0.06, -8.0);
-    frontPath.receiveShadow = true;
-    scene.add(frontPath);
+    const path = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.04, 5.5), MAT.concrete);
+    path.position.set(-0.15, -0.04, zF - PORCH_DEPTH - 2.7);
+    path.receiveShadow = true;
+    scene.add(path);
 
-    // Simple visible controller shapes; no menus or controller-dependent interactions.
     for (let i = 0; i < 2; i++) {
       const controller = renderer.xr.getController(i);
-      const handMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.045, 0.045, 0.16),
-        MAT.frame
-      );
-      handMesh.position.z = -0.08;
-      controller.add(handMesh);
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.16), MAT.frame);
+      hand.position.z = -0.08;
+      controller.add(hand);
       rig.add(controller);
     }
 
     function distanceToSegment(px, pz, x1, z1, x2, z2) {
-      const vx = x2 - x1;
-      const vz = z2 - z1;
-      const wx = px - x1;
-      const wz = pz - z1;
-      const lengthSquared = vx * vx + vz * vz;
-      let t = lengthSquared ? (wx * vx + wz * vz) / lengthSquared : 0;
+      const vx = x2 - x1, vz = z2 - z1;
+      const wx = px - x1, wz = pz - z1;
+      const l2 = vx * vx + vz * vz;
+      let t = l2 ? (wx * vx + wz * vz) / l2 : 0;
       t = Math.max(0, Math.min(1, t));
-      const cx = x1 + t * vx;
-      const cz = z1 + t * vz;
-      return Math.hypot(px - cx, pz - cz);
+      return Math.hypot(px - (x1 + t * vx), pz - (z1 + t * vz));
     }
 
     function canOccupy(x, z) {
       for (const wall of collisionSegments) {
-        if (distanceToSegment(x, z, wall.x1, wall.z1, wall.x2, wall.z2) < PLAYER_RADIUS + WALL_THICKNESS * 0.55) {
-          return false;
-        }
+        if (distanceToSegment(x, z, wall.x1, wall.z1, wall.x2, wall.z2) < PLAYER_R + WALL_T * 0.55) return false;
       }
       return true;
     }
@@ -435,74 +313,61 @@
     }
 
     function deadzone(value, zone = 0.15) {
-      const magnitude = Math.abs(value);
-      if (magnitude < zone) return 0;
-      return Math.sign(value) * (magnitude - zone) / (1 - zone);
+      const m = Math.abs(value);
+      return m < zone ? 0 : Math.sign(value) * (m - zone) / (1 - zone);
     }
 
     const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
     const movement = new THREE.Vector3();
-    const worldUp = new THREE.Vector3(0, 1, 0);
+    const up = new THREE.Vector3(0, 1, 0);
 
     function updateLocomotion(dt) {
       const session = renderer.xr.getSession();
       if (!session) return;
-
-      let leftSource = null;
-      let rightSource = null;
+      let leftSource = null, rightSource = null;
       for (const source of session.inputSources) {
         if (source.handedness === 'left') leftSource = source;
         if (source.handedness === 'right') rightSource = source;
       }
-
-      const leftStick = thumbstick(leftSource);
+      const left = thumbstick(leftSource);
       const rightStick = thumbstick(rightSource);
-      const strafe = deadzone(leftStick.x);
-      const advance = deadzone(leftStick.y);
+      const strafe = deadzone(left.x);
+      const advance = deadzone(left.y);
       const turn = deadzone(rightStick.x);
 
-      // Continuous right-stick turning; no snap-turn state exists anywhere.
       rig.rotation.y -= turn * 1.9 * dt;
-
-      if (strafe === 0 && advance === 0) return;
+      if (!strafe && !advance) return;
 
       camera.getWorldDirection(forward);
       forward.y = 0;
       if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
       forward.normalize();
-      right.crossVectors(forward, worldUp).normalize();
-
-      movement.set(0, 0, 0)
-        .addScaledVector(right, strafe)
-        .addScaledVector(forward, -advance);
-
+      right.crossVectors(forward, up).normalize();
+      movement.set(0, 0, 0).addScaledVector(right, strafe).addScaledVector(forward, -advance);
       if (movement.lengthSq() > 1) movement.normalize();
-      movement.multiplyScalar(2.35 * dt);
+      movement.multiplyScalar(2.25 * dt);
 
-      const nextX = rig.position.x + movement.x;
-      const nextZ = rig.position.z + movement.z;
-
-      // Resolve axes separately so movement slides along walls instead of sticking.
-      if (canOccupy(nextX, rig.position.z)) rig.position.x = nextX;
-      if (canOccupy(rig.position.x, nextZ)) rig.position.z = nextZ;
+      const nx = rig.position.x + movement.x;
+      const nz = rig.position.z + movement.z;
+      if (canOccupy(nx, rig.position.z)) rig.position.x = nx;
+      if (canOccupy(rig.position.x, nz)) rig.position.z = nz;
     }
 
     let lastTime = performance.now();
-    let previewAngle = 0;
+    let previewAngle = 0.5;
 
     renderer.xr.addEventListener('sessionstart', () => {
-      rig.position.set(0, 0, -3.9);
+      rig.position.set((xBedroomWall + xHallWall) / 2, 0, zF + 2.0);
       rig.rotation.set(0, 0, 0);
       camera.position.set(0, 0, 0);
-      renderer.xr.setFoveation(1);
       status.textContent = 'Left stick moves · right stick turns smoothly';
     });
 
     renderer.xr.addEventListener('sessionend', () => {
       rig.position.set(0, 0, 0);
       rig.rotation.set(0, 0, 0);
-      status.textContent = 'Open this page in the Quest Browser and press Enter VR.';
+      status.textContent = 'Quest: left stick moves, right stick turns smoothly. No snap turning.';
     });
 
     function resize() {
@@ -512,23 +377,20 @@
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     }
-
-    addEventListener('resize', resize);
+    new ResizeObserver(resize).observe(app);
     resize();
     loading.remove();
 
     renderer.setAnimationLoop((time) => {
       const dt = Math.min(0.05, (time - lastTime) / 1000);
       lastTime = time;
-
       if (renderer.xr.isPresenting) {
         updateLocomotion(dt);
       } else {
         previewAngle += dt * 0.08;
-        camera.position.set(Math.sin(previewAngle) * 18, 13, Math.cos(previewAngle) * 18);
+        camera.position.set(Math.sin(previewAngle) * 16, 12.5, Math.cos(previewAngle) * 16);
         camera.lookAt(0, 0.7, 0);
       }
-
       renderer.render(scene, camera);
     });
   </script>
