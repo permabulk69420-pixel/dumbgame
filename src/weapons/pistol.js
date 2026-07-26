@@ -4,6 +4,7 @@ import { loadGLB, prepareModel } from '../asset-loader.js';
 
 const SLIDE_REST_Z = -0.004;
 const SLIDE_REAR_Z = 0.026;
+const PISTOL_GRIP_ROLL = Math.PI;
 const TRIGGER_TRAVEL = THREE.MathUtils.degToRad(18);
 const MAG_RELEASE_TRAVEL = 0.0025;
 const MAG_SEATED_POSITION = Object.freeze([0, 0.079, 0.0395]);
@@ -72,6 +73,10 @@ export async function loadPistol({
   const magazineGripPoint = requireNode(modelRoot, 'Magazine_Grip_Point');
   const magazineWellPoint = requireNode(modelRoot, 'Magazine_Well_Point');
   const magazineRelease = requireNode(modelRoot, 'Magazine_Release');
+
+  // The palm socket is correct spatially, but its roll is opposite the pistol locator.
+  // Rotate the empty locator—not the tracked hand—so the slide sits above the fist.
+  gripPoint.rotateZ(PISTOL_GRIP_ROLL);
 
   const pistolGripMatrix = relativeMatrix(modelRoot, gripPoint);
   const magazineGripMatrix = relativeMatrix(magazine, magazineGripPoint);
