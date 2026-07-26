@@ -1,4 +1,4 @@
-import { ASSETS } from './config.js';
+import { ASSETS } from './config.js?v=2';
 import { loadGLB, prepareModel } from './asset-loader.js';
 import { loadComputerSetup } from './computer/computer-setup.js';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
@@ -64,7 +64,28 @@ export async function loadDecorAssets({
     }
   } catch (error) {
     console.error('Computer desk setup failed to load', error);
-    if (statusElement) statusElement.textContent = 'House loaded; the computer setup failed to load.';
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the computer setup failed to load.';
+  }
+
+  try {
+    const gltf = await loadGLB(ASSETS.couch);
+    const couch = prepareModel(gltf.scene, { castShadow: true, receiveShadow: true });
+    couch.name = 'TwoSeatBlackLeatherCouch';
+
+    // Against the living-room side wall, facing into the room. It remains a normal
+    // decoration-mode placeable, so this is only its first-run position.
+    couch.position.set(5.55, floorY, -1.35);
+    couch.rotation.y = Math.PI * 0.5;
+    scene.add(couch);
+    placement.registerPlaceable(couch, 'living-room-couch', { floorY });
+
+    disposers.push(() => {
+      placement.unregisterPlaceable(couch);
+      couch.removeFromParent();
+    });
+  } catch (error) {
+    console.error('Couch failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the couch failed to load.';
   }
 
   return {
