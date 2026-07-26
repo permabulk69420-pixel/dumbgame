@@ -70,6 +70,7 @@ export async function createVRHands({
       handAnchor: null,
       handRoot: null,
       gripSocket: null,
+      indexTip: null,
       mixerState: null
     };
   });
@@ -105,6 +106,7 @@ export async function createVRHands({
     state.handAnchor = null;
     state.handRoot = null;
     state.gripSocket = null;
+    state.indexTip = null;
     state.mixerState = null;
   }
 
@@ -128,15 +130,22 @@ export async function createVRHands({
     anchor.add(root);
     state.grip.add(anchor);
 
-    const socketName = handedness === 'left' ? 'b_l_grip' : 'b_r_grip';
+    const side = handedness === 'left' ? 'l' : 'r';
+    const socketName = `b_${side}_grip`;
+    const indexTipName = `b_${side}_index_ignore`;
     const gripSocket = root.getObjectByName(socketName);
+    const indexTip = root.getObjectByName(indexTipName);
     if (!gripSocket) {
       onError(`Missing ${socketName}; held objects will fall back to the controller wrist origin`);
+    }
+    if (!indexTip) {
+      onError(`Missing ${indexTipName}; fingertip poke interactions are unavailable for this hand`);
     }
 
     state.handAnchor = anchor;
     state.handRoot = root;
     state.gripSocket = gripSocket || null;
+    state.indexTip = indexTip || null;
     state.mixerState = createActions(root, gltf.animations);
     setPose(state.mixerState, 'Open', 0);
     syncObjectGrip(state);
@@ -184,9 +193,18 @@ export async function createVRHands({
     }
   }
 
+  function getIndexTipWorldPosition(handedness, target) {
+    const state = states.find((item) => item.handedness === handedness);
+    if (!state?.indexTip || !target?.isVector3) return false;
+    state.indexTip.updateWorldMatrix(true, false);
+    state.indexTip.getWorldPosition(target);
+    return true;
+  }
+
   return {
     update,
     states,
-    objectGrips: states.map((state) => state.objectGrip)
+    objectGrips: states.map((state) => state.objectGrip),
+    getIndexTipWorldPosition
   };
 }
