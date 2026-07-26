@@ -77,7 +77,8 @@ loadDecorAssets({
   scene: world.scene,
   placement,
   floorY: house.floorY,
-  statusElement: status
+  statusElement: status,
+  gameState
 }).then((value) => {
   decor = value;
 }).catch(console.error);
