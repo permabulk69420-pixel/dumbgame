@@ -6,8 +6,15 @@ const GRAVITY = 7.5;
 const LIGHT_DISTANCE = 15;
 const LIGHT_INTENSITY = 95;
 const LIGHT_ANGLE = THREE.MathUtils.degToRad(22);
+const BUTTON_TRAVEL = 0.0016;
+const POKE_LATERAL_RADIUS = 0.018;
+const POKE_CONTACT_HEIGHT = 0.016;
+const POKE_PRESS_DEPTH = 0.012;
+const POKE_TRIGGER_AMOUNT = 0.62;
 
 const tempMatrix = new THREE.Matrix4();
+const tempFingerWorld = new THREE.Vector3();
+const tempFingerLocal = new THREE.Vector3();
 
 function relativeMatrix(root, locator) {
   root.updateWorldMatrix(true, true);
@@ -70,10 +77,31 @@ function setNodeGlow(node, enabled) {
   });
 }
 
+function pulseHand(controllerModes, handedness) {
+  const gamepad = controllerModes?.getState?.(handedness)?.inputSource?.gamepad;
+  const actuator = gamepad?.hapticActuators?.[0] || gamepad?.vibrationActuator;
+  try {
+    if (actuator?.pulse) {
+      const result = actuator.pulse(0.35, 34);
+      result?.catch?.(() => {});
+    } else if (actuator?.playEffect) {
+      const result = actuator.playEffect('dual-rumble', {
+        duration: 34,
+        strongMagnitude: 0.32,
+        weakMagnitude: 0.18
+      });
+      result?.catch?.(() => {});
+    }
+  } catch {
+    // The poke still works on runtimes that expose no haptic actuator.
+  }
+}
+
 export async function loadTorch({
   scene,
   placement,
   grips,
+  hands = null,
   controllerModes = null,
   floorY = 0,
   statusElement = null
@@ -87,17 +115,7 @@ export async function loadTorch({
   const powerButton = requireNode(root, 'PowerButton');
   const led = root.getObjectByName('Torch_LED') || lightOrigin;
   const gripMatrix = relativeMatrix(root, gripPoint);
-
-  const buttonMixer = new THREE.AnimationMixer(root);
-  const buttonClip = THREE.AnimationClip.findByName(gltf.animations, 'PowerButton_Click');
-  const buttonAction = buttonClip ? buttonMixer.clipAction(buttonClip) : null;
-  if (buttonAction) {
-    buttonAction.setLoop(THREE.LoopOnce, 1);
-    buttonAction.clampWhenFinished = false;
-  }
-
   const buttonRestY = powerButton.position.y;
-  let manualButtonTime = 0;
 
   prepareEmissiveNode(led);
 
@@ -127,6 +145,8 @@ export async function loadTorch({
   let holder = null;
   let falling = false;
   let lightOn = false;
+  let pokeLatched = false;
+  let buttonPressAmount = 0;
 
   const getGrip = (handedness) => {
     const index = controllerModes?.states?.findIndex((state) => state.handedness === handedness) ?? -1;
@@ -143,22 +163,62 @@ export async function loadTorch({
     setNodeGlow(led, lightOn);
   }
 
-  function clickButton() {
-    if (buttonAction) {
-      buttonAction.reset();
-      buttonAction.play();
-    } else {
-      manualButtonTime = 0.18;
-    }
+  function pokeInstructions() {
+    return lightOn
+      ? 'Torch ON · A/X points with the free hand · poke the power button to switch it off'
+      : 'Torch OFF · A/X points with the free hand · poke the power button to switch it on';
   }
 
-  function toggleLight() {
+  function toggleLight(pokeHandedness) {
     lightOn = !lightOn;
-    clickButton();
     applyLightState();
-    setStatus(lightOn
-      ? 'Torch ON · A/X toggles it · release grip to drop it'
-      : 'Torch OFF · A/X toggles it · release grip to drop it');
+    pulseHand(controllerModes, pokeHandedness);
+    setStatus(pokeInstructions());
+  }
+
+  function updatePoke(dt) {
+    let targetPress = 0;
+    let touching = false;
+
+    if (holder) {
+      const pokeHandedness = holder.handedness === 'left' ? 'right' : 'left';
+      const pointing = controllerModes?.isPointing?.(pokeHandedness) ?? false;
+      const hasTip = pointing && hands?.getIndexTipWorldPosition?.(pokeHandedness, tempFingerWorld);
+
+      if (hasTip && powerButton.parent) {
+        powerButton.parent.updateWorldMatrix(true, false);
+        tempFingerLocal.copy(tempFingerWorld);
+        powerButton.parent.worldToLocal(tempFingerLocal);
+
+        const dx = tempFingerLocal.x - powerButton.position.x;
+        const dz = tempFingerLocal.z - powerButton.position.z;
+        const lateralDistance = Math.hypot(dx, dz);
+        const contactY = buttonRestY + POKE_CONTACT_HEIGHT;
+        const penetration = contactY - tempFingerLocal.y;
+
+        touching = lateralDistance <= POKE_LATERAL_RADIUS &&
+          penetration >= 0 &&
+          tempFingerLocal.y >= buttonRestY - 0.025;
+
+        if (touching) {
+          targetPress = THREE.MathUtils.clamp(penetration / POKE_PRESS_DEPTH, 0, 1);
+          if (targetPress >= POKE_TRIGGER_AMOUNT && !pokeLatched) {
+            pokeLatched = true;
+            toggleLight(pokeHandedness);
+          }
+        }
+      }
+    }
+
+    if (!touching || targetPress < 0.16) pokeLatched = false;
+
+    // Follow the fingertip immediately while pressing, then spring back smoothly.
+    if (targetPress >= buttonPressAmount) {
+      buttonPressAmount = targetPress;
+    } else {
+      buttonPressAmount = THREE.MathUtils.damp(buttonPressAmount, targetPress, 30, dt);
+    }
+    powerButton.position.y = buttonRestY - BUTTON_TRAVEL * buttonPressAmount;
   }
 
   applyLightState();
@@ -173,18 +233,21 @@ export async function loadTorch({
 
       holder = { handedness, grip };
       falling = false;
+      pokeLatched = false;
+      buttonPressAmount = 0;
       velocity.set(0, 0, 0);
       controllerModes?.setPointing?.(handedness, false);
       attachLocatorToGrip(root, gripMatrix, grip);
-      setStatus(lightOn
-        ? 'Torch held and ON · A/X toggles it · release grip to drop it'
-        : 'Torch held and OFF · A/X toggles it · release grip to drop it');
+      setStatus(pokeInstructions());
       return { handedness };
     },
     end({ handedness }) {
       if (holder?.handedness !== handedness) return;
       scene.attach(root);
       holder = null;
+      pokeLatched = false;
+      buttonPressAmount = 0;
+      powerButton.position.y = buttonRestY;
       falling = true;
       velocity.set(0, -0.1, 0);
       setStatus('Torch dropped · point at it and hold grip to pick it up');
@@ -192,24 +255,16 @@ export async function loadTorch({
   });
 
   function update(dt) {
-    buttonMixer.update(dt);
-
-    if (manualButtonTime > 0) {
-      manualButtonTime = Math.max(0, manualButtonTime - dt);
-      const phase = 1 - manualButtonTime / 0.18;
-      const press = phase < 0.48 ? phase / 0.48 : (1 - phase) / 0.52;
-      powerButton.position.y = buttonRestY - Math.max(0, press) * 0.0016;
-    } else if (!buttonAction) {
-      powerButton.position.y = buttonRestY;
-    }
-
     if (holder) {
-      const modeState = controllerModes?.getState?.(holder.handedness);
-      if (modeState?.primaryPressed) {
-        controllerModes?.setPointing?.(holder.handedness, false);
-        toggleLight();
+      // A/X on the torch hand normally toggles pointing globally. Suppress that hand;
+      // the free hand is the one intended to enter point/poke mode.
+      const holderMode = controllerModes?.getState?.(holder.handedness);
+      if (holderMode?.primaryPressed && controllerModes?.isPointing?.(holder.handedness)) {
+        controllerModes.setPointing(holder.handedness, false);
       }
     }
+
+    updatePoke(dt);
 
     if (falling) {
       falling = !settleOnFloor(root, floorY, velocity, dt, bounds);
