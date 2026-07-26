@@ -1,5 +1,6 @@
 import { ASSETS } from './config.js';
 import { loadGLB, prepareModel } from './asset-loader.js';
+import { loadComputerSetup } from './computer/computer-setup.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
 
@@ -21,13 +22,21 @@ export async function loadDecorAssets({
     desk.rotation.y = 0;
     scene.add(desk);
 
-    placement.registerPlaceable(desk, 'computer-desk', { floorY });
-
     const drawerAnimations = createDrawerAnimations(desk, gltf.animations, {
       gameState,
       storageId: 'computer-desk-drawers'
     });
     updaters.push(drawerAnimations.update);
+
+    const computer = await loadComputerSetup({
+      desk,
+      gameState,
+      statusElement
+    });
+    updaters.push(computer.update);
+    disposers.push(computer.dispose);
+
+    placement.registerPlaceable(desk, 'computer-desk', { floorY });
 
     const slidingInteractions = registerSlidingDeskInteractions({
       desk,
@@ -36,13 +45,15 @@ export async function loadDecorAssets({
       statusElement
     });
     disposers.push(slidingInteractions.dispose);
+    disposers.push(computer.registerInteractions(placement));
 
     if (statusElement) {
-      statusElement.textContent = 'Desk loaded · pull drawers with trigger · point at the desk body to move it';
+      statusElement.textContent =
+        'Computer loaded · pull drawers with trigger · press the computer controls directly';
     }
   } catch (error) {
-    console.error('ComputerDesk.glb failed to load', error);
-    if (statusElement) statusElement.textContent = 'House loaded; the desk asset failed to load.';
+    console.error('Computer desk setup failed to load', error);
+    if (statusElement) statusElement.textContent = 'House loaded; the computer setup failed to load.';
   }
 
   return {
