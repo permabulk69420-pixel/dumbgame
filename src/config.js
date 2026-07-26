@@ -20,3 +20,10 @@ export const PLAYER = Object.freeze({
   moveSpeed: 2.25,
   turnSpeed: 1.9
 });
+
+export const GAME_TIME = Object.freeze({
+  realSecondsPerDay: 30 * 60,
+  sleepHour: 8,
+  sleepMinute: 0,
+  advanceOnlyInXR: true
+});
