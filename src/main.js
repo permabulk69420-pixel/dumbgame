@@ -14,6 +14,7 @@ import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js';
 import { createEventScheduler } from './story/event-scheduler.js';
+import { createPerformanceHud } from './debug/performance-hud.js?v=1';
 
 const app = document.getElementById('app');
 const loading = document.getElementById('loading');
@@ -43,6 +44,15 @@ const controllerModes = createControllerModes({
   statusElement: status,
   decorationEnabledByDefault: INTERACTION.decorationEnabledByDefault,
   decorationToggleHoldSeconds: INTERACTION.decorationToggleHoldSeconds
+});
+
+const performanceHud = createPerformanceHud({
+  scene: world.scene,
+  camera: world.camera,
+  renderer: world.renderer,
+  grips: world.grips,
+  controllerModes,
+  visibleByDefault: true
 });
 
 const placement = createPlacementSystem({
@@ -156,8 +166,9 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.position.copy(house.spawn);
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
+  performanceHud.reset();
   status.textContent =
-    'Grip door handles to push or pull · grip picks up pistol or torch · A/X points with a free hand';
+    'FPS panel follows left controller · grip door handles · grip picks up pistol or torch · A/X points';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -183,6 +194,8 @@ window.game = {
   setDecorationMode: controllerModes.setDecorationMode,
   isDecorationMode: controllerModes.isDecorationMode,
   setPointing: controllerModes.setPointing,
+  setPerformanceHudVisible: performanceHud.setVisible,
+  isPerformanceHudVisible: performanceHud.isVisible,
   setEntryDoorLocked: (...args) => entryDoor.setLocked(...args),
   setEntryDoorAngle: (...args) => entryDoor.setAngle(...args),
   getEntryDoorAngle: () => entryDoor.getAngle(),
@@ -222,5 +235,6 @@ world.renderer.setAnimationLoop((time) => {
     world.camera.lookAt(0, 0.7, 0);
   }
 
+  performanceHud.update(time);
   world.renderer.render(world.scene, world.camera);
 });
