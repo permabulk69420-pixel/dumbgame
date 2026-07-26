@@ -20,7 +20,8 @@ export const ASSETS = Object.freeze({
   mouse: './assets/models/computer/modern_desktop_mouse.glb',
   computerTower: './assets/models/computer/modern_desktop_tower.glb',
   pistol: './assets/models/tools/Generic_Striker_Pistol_v5_final.glb',
-  torch: './assets/models/tools/Generic_Handheld_Torch_v2_forward_button.glb'
+  torch: './assets/models/tools/Generic_Handheld_Torch_v2_forward_button.glb',
+  apartmentEntryDoor: './assets/models/architecture/Apartment_Entry_Door.glb?v=1'
 });
 
 export const PLAYER = Object.freeze({
