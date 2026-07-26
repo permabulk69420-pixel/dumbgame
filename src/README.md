@@ -6,11 +6,12 @@
 - `materials.js` — procedural textures and shared materials.
 - `house.js` — fixed house geometry, trim, roof, interior lights and wall collision segments.
 - `locomotion.js` — Quest thumbsticks, smooth turning and player collision.
-- `placement-system.js` — reusable point/lock/move/place system with saved transforms.
+- `placement-system.js` — reusable point/lock/move/place system, saved transforms and priority sub-object grab interactions.
 - `asset-loader.js` — GLB loading and common mesh setup.
 - `hands.js` — rigged hand loading and analog pose scrubbing. Mixer update is mandatory.
 - `assets.js` — registers scene props such as the computer desk.
-- `interactions/drawers.js` — drawer animation scrubbing; physical pulling can be added here.
+- `interactions/drawers.js` — drawer animation scrubbing and persistent open amounts.
+- `interactions/sliding-grab.js` — maps controller pulling along a local slide axis to drawers and trays.
 - `state/game-state.js` — persistent day, time, story phase, flags and completed-event state.
 - `time/game-clock.js` — game-time advancement, pausing, skipping and sleeping to the next day.
 - `time/day-night-cycle.js` — sun, sky, fog, exposure and automatic interior-light changes.
