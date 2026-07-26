@@ -3,7 +3,7 @@ import { createMaterials } from './materials.js';
 import { createHouse } from './house.js';
 import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
-import { createVRHands } from './hands.js';
+import { createVRHands } from './hands.js?v=5';
 import { loadDecorAssets } from './assets.js';
 import { loadPistol } from './weapons/pistol.js';
 import { GAME_TIME, INTERACTION } from './config.js';
