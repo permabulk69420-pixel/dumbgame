@@ -28,8 +28,12 @@ export function createWorld(app) {
   rig.add(camera);
   scene.add(rig);
 
-  scene.add(new THREE.HemisphereLight(0xf6fafb, 0x66584b, 1.55));
+  const hemisphere = new THREE.HemisphereLight(0xf6fafb, 0x66584b, 1.55);
+  hemisphere.name = 'World_HemisphereLight';
+  scene.add(hemisphere);
+
   const sun = new THREE.DirectionalLight(0xffefd8, 2.65);
+  sun.name = 'World_Sun';
   sun.position.set(12, 21, 10);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -42,6 +46,7 @@ export function createWorld(app) {
   scene.add(sun);
 
   const fill = new THREE.DirectionalLight(0x91adc1, 0.52);
+  fill.name = 'World_FillLight';
   fill.position.set(-14, 9, -15);
   scene.add(fill);
 
@@ -61,5 +66,14 @@ export function createWorld(app) {
   observer.observe(app);
   resize();
 
-  return { scene, camera, renderer, rig, controllers, grips, dispose: () => observer.disconnect() };
+  return {
+    scene,
+    camera,
+    renderer,
+    rig,
+    controllers,
+    grips,
+    lights: { hemisphere, sun, fill },
+    dispose: () => observer.disconnect()
+  };
 }
