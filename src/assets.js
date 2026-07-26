@@ -1,6 +1,7 @@
 import { ASSETS } from './config.js';
 import { loadGLB, prepareModel } from './asset-loader.js';
 import { loadComputerSetup } from './computer/computer-setup.js';
+import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
 
@@ -36,7 +37,17 @@ export async function loadDecorAssets({
     updaters.push(computer.update);
     disposers.push(computer.dispose);
 
+    // Register the desk first, then its child props. The later registrations deliberately
+    // override the desk's placeable marker on each computer component, so the ray selects
+    // the exact monitor, keyboard, mouse or tower instead of always resolving to the desk.
     placement.registerPlaceable(desk, 'computer-desk', { floorY });
+    const computerPlaceables = registerComputerPlaceables({
+      placement,
+      roots: computer.roots,
+      floorY
+    });
+    updaters.push(computerPlaceables.update);
+    disposers.push(computerPlaceables.dispose);
 
     const slidingInteractions = registerSlidingDeskInteractions({
       desk,
@@ -49,7 +60,7 @@ export async function loadDecorAssets({
 
     if (statusElement) {
       statusElement.textContent =
-        'Computer loaded · grip drawers · A/X points · trigger uses controls · B/Y decorates';
+        'Computer loaded · B/Y moves the exact highlighted prop · grip pulls drawers · A/X points';
     }
   } catch (error) {
     console.error('Computer desk setup failed to load', error);
