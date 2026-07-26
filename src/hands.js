@@ -24,7 +24,12 @@ function setPose(state, name, amount) {
   action.time = THREE.MathUtils.clamp(amount, 0, 1);
 }
 
-export async function createVRHands({ controllers, grips, onError = console.warn }) {
+export async function createVRHands({
+  controllers,
+  grips,
+  controllerModes = null,
+  onError = console.warn
+}) {
   const sources = await Promise.allSettled([
     loadGLB(ASSETS.leftHand),
     loadGLB(ASSETS.rightHand)
@@ -39,6 +44,7 @@ export async function createVRHands({ controllers, grips, onError = console.warn
     controller,
     grip: grips[index],
     inputSource: null,
+    handedness: '',
     handRoot: null,
     mixerState: null
   }));
@@ -65,11 +71,14 @@ export async function createVRHands({ controllers, grips, onError = console.warn
   for (const state of states) {
     state.controller.addEventListener('connected', (event) => {
       state.inputSource = event.data;
-      const handedness = event.data.handedness;
-      if (handedness === 'left' || handedness === 'right') attach(state, handedness);
+      state.handedness = event.data.handedness || '';
+      if (state.handedness === 'left' || state.handedness === 'right') {
+        attach(state, state.handedness);
+      }
     });
     state.controller.addEventListener('disconnected', () => {
       state.inputSource = null;
+      state.handedness = '';
       if (state.handRoot) state.grip.remove(state.handRoot);
       state.handRoot = null;
       state.mixerState = null;
@@ -82,18 +91,21 @@ export async function createVRHands({ controllers, grips, onError = console.warn
       const gamepad = state.inputSource?.gamepad;
       const trigger = gamepad?.buttons?.[0]?.value ?? 0;
       const squeeze = gamepad?.buttons?.[1]?.value ?? 0;
+      const pointing = controllerModes?.isPointing?.(state.handedness) ?? false;
 
-      if (trigger > 0.08 && squeeze > 0.08) {
+      if (squeeze > 0.08 && trigger > 0.08) {
         setPose(state.mixerState, 'Fist', Math.max(trigger, squeeze));
       } else if (squeeze > 0.08) {
-        setPose(state.mixerState, 'Point', squeeze);
+        setPose(state.mixerState, 'Grip', squeeze);
+      } else if (pointing && trigger <= 0.08) {
+        setPose(state.mixerState, 'Point', 1);
       } else if (trigger > 0.08) {
         setPose(state.mixerState, 'Pinch', trigger);
       } else {
         setPose(state.mixerState, 'Open', 0);
       }
 
-      // Do not remove this: paused, scrubbed hand actions still need the mixer tick.
+      // Paused, scrubbed hand actions still require the mixer tick every frame.
       state.mixerState.mixer.update(dt);
     }
   }
