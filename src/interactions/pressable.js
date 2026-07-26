@@ -13,7 +13,7 @@ export function registerPressable({
   onPress = null,
   onRelease = null
 }) {
-  if (!placement?.registerGrabInteraction || !node) return () => {};
+  if (!placement?.registerUseInteraction || !node) return () => {};
 
   const restPosition = node.position.clone();
   const restQuaternion = node.quaternion.clone();
@@ -33,7 +33,7 @@ export function registerPressable({
     node.updateMatrix();
   }
 
-  return placement.registerGrabInteraction(node, {
+  return placement.registerUseInteraction(node, {
     id: id || `press:${node.uuid}`,
     label,
 
@@ -68,9 +68,9 @@ export function registerPassiveInteraction({
   statusElement = null,
   onSelect = null
 }) {
-  if (!placement?.registerGrabInteraction || !node) return () => {};
+  if (!placement?.registerUseInteraction || !node) return () => {};
 
-  return placement.registerGrabInteraction(node, {
+  return placement.registerUseInteraction(node, {
     id: id || `select:${node.uuid}`,
     label,
 
