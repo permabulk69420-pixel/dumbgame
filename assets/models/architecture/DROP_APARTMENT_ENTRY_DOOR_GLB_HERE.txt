@@ -1,3 +1,0 @@
-Upload the finished model into this folder with the exact filename:
-
-Apartment_Entry_Door.glb
