@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#11171a">
-  <title>VR Cottage Walkthrough</title>
+  <title>Expanded VR Cottage Walkthrough</title>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
@@ -31,10 +31,10 @@
 </head>
 <body>
   <div id="app">
-    <div id="loading">Building dimensioned cottage…</div>
+    <div id="loading">Building expanded cottage…</div>
     <div id="panel">
-      <div id="title">33 × 37 ft three-bedroom cottage</div>
-      <div id="status">Quest: left stick moves, right stick turns smoothly. No snap turning.</div>
+      <div id="title">Expanded three-bedroom cottage</div>
+      <div id="status">Rooms and hall are 50% larger. Quest: left stick moves, right stick turns smoothly.</div>
     </div>
   </div>
 
@@ -48,9 +48,9 @@
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x9fb8c2);
-    scene.fog = new THREE.Fog(0x9fb8c2, 28, 65);
+    scene.fog = new THREE.Fog(0x9fb8c2, 38, 82);
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 120);
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 150);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -74,25 +74,24 @@
 
     scene.add(new THREE.HemisphereLight(0xf5f9fb, 0x675948, 1.75));
     const sun = new THREE.DirectionalLight(0xffefd8, 2.5);
-    sun.position.set(10, 18, 8);
+    sun.position.set(14, 22, 12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -20;
-    sun.shadow.camera.right = 20;
-    sun.shadow.camera.top = 20;
-    sun.shadow.camera.bottom = -20;
+    sun.shadow.camera.left = -28;
+    sun.shadow.camera.right = 28;
+    sun.shadow.camera.top = 28;
+    sun.shadow.camera.bottom = -28;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 50;
+    sun.shadow.camera.far = 65;
     scene.add(sun);
     const fill = new THREE.DirectionalLight(0x91adc1, 0.55);
-    fill.position.set(-12, 8, -13);
+    fill.position.set(-16, 10, -16);
     scene.add(fill);
 
     const MAT = {
       outer: new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.92 }),
       inner: new THREE.MeshStandardMaterial({ color: 0xc8c0b4, roughness: 0.94 }),
       floor: new THREE.MeshStandardMaterial({ color: 0x806f5f, roughness: 0.97 }),
-      tile: new THREE.MeshStandardMaterial({ color: 0x858b89, roughness: 0.96 }),
       foundation: new THREE.MeshStandardMaterial({ color: 0x454a4c, roughness: 1 }),
       frame: new THREE.MeshStandardMaterial({ color: 0x34393b, roughness: 0.76 }),
       timber: new THREE.MeshStandardMaterial({ color: 0x4b3a2e, roughness: 0.86 }),
@@ -101,7 +100,8 @@
       concrete: new THREE.MeshStandardMaterial({ color: 0x77766f, roughness: 1 })
     };
 
-    const F = 0.3048;
+    // Every horizontal dimension is multiplied by 1.5. Heights stay unchanged.
+    const F = 0.3048 * 1.5;
     const WIDTH = 33 * F;
     const DEPTH = 32 * F;
     const PORCH_DEPTH = 5 * F;
@@ -135,8 +135,6 @@
 
     box(WIDTH, 0.12, DEPTH, 0, -0.06, 0, MAT.foundation);
     box(WIDTH, SLAB_H, DEPTH, 0, SLAB_H / 2, 0, MAT.floor);
-    box(6 * F, 0.018, 7 * F, xHallWall + 3 * F, SLAB_H + 0.012, 0.05, MAT.tile, false);
-    box(15 * F, 0.018, 8 * F, (xHallWall + xR) / 2, SLAB_H + 0.013, zB - 4 * F, MAT.tile, false);
 
     box(WIDTH, 0.12, PORCH_DEPTH, 0, 0.02, zF - PORCH_DEPTH / 2, MAT.concrete, false);
     box(12 * F, 0.12, 10 * F, xR - 6 * F, 0.02, zB + 5 * F, MAT.concrete, false);
@@ -257,6 +255,7 @@
 
     wallRun(xHallWall + 6 * F, zLivingKitchen, xR, zLivingKitchen, [wide(6.5 * F, 5.5 * F)], MAT.inner);
 
+    // Keep the two smaller hall rooms; they are now 50% larger along with everything else.
     const bathRight = xHallWall + 6 * F;
     const bathFront = zF + 12 * F;
     const bathBack = zF + 19 * F;
@@ -269,14 +268,14 @@
     wallRun(xHallWall + 4.5 * F, bathBack, xHallWall + 4.5 * F, laundryBack, [], MAT.inner);
     wallRun(xHallWall + 4.5 * F, laundryBack, xHallWall, laundryBack, [], MAT.inner);
 
-    const outdoors = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), MAT.grass);
+    const outdoors = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), MAT.grass);
     outdoors.rotation.x = -Math.PI / 2;
     outdoors.position.y = -0.13;
     outdoors.receiveShadow = true;
     scene.add(outdoors);
 
-    const path = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.04, 5.5), MAT.concrete);
-    path.position.set(-0.15, -0.04, zF - PORCH_DEPTH - 2.7);
+    const path = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.04, 7.5), MAT.concrete);
+    path.position.set(-0.15, -0.04, zF - PORCH_DEPTH - 3.7);
     path.receiveShadow = true;
     scene.add(path);
 
@@ -358,7 +357,7 @@
     let previewAngle = 0.5;
 
     renderer.xr.addEventListener('sessionstart', () => {
-      rig.position.set((xBedroomWall + xHallWall) / 2, 0, zF + 2.0);
+      rig.position.set((xBedroomWall + xHallWall) / 2, 0, zF + 3.0);
       rig.rotation.set(0, 0, 0);
       camera.position.set(0, 0, 0);
       status.textContent = 'Left stick moves · right stick turns smoothly';
@@ -367,7 +366,7 @@
     renderer.xr.addEventListener('sessionend', () => {
       rig.position.set(0, 0, 0);
       rig.rotation.set(0, 0, 0);
-      status.textContent = 'Quest: left stick moves, right stick turns smoothly. No snap turning.';
+      status.textContent = 'Rooms and hall are 50% larger. Quest: left stick moves, right stick turns smoothly.';
     });
 
     function resize() {
@@ -388,7 +387,7 @@
         updateLocomotion(dt);
       } else {
         previewAngle += dt * 0.08;
-        camera.position.set(Math.sin(previewAngle) * 16, 12.5, Math.cos(previewAngle) * 16);
+        camera.position.set(Math.sin(previewAngle) * 23, 16, Math.cos(previewAngle) * 23);
         camera.lookAt(0, 0.7, 0);
       }
       renderer.render(scene, camera);
