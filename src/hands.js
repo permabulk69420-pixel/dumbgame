@@ -54,20 +54,37 @@ export async function createVRHands({
     right: sources[1].status === 'fulfilled' ? sources[1].value : null
   };
 
-  const states = controllers.map((controller, index) => ({
-    controller,
-    grip: grips[index],
-    inputSource: null,
-    handedness: '',
-    handAnchor: null,
-    handRoot: null,
-    mixerState: null
-  }));
+  const states = controllers.map((controller, index) => {
+    const objectGrip = new THREE.Group();
+    objectGrip.name = `controller-${index}-held-object-anchor`;
+    grips[index].add(objectGrip);
+
+    return {
+      controller,
+      grip: grips[index],
+      objectGrip,
+      inputSource: null,
+      handedness: '',
+      handAnchor: null,
+      handRoot: null,
+      gripSocket: null,
+      mixerState: null
+    };
+  });
+
+  function resetObjectGrip(state) {
+    state.grip.add(state.objectGrip);
+    state.objectGrip.position.set(0, 0, 0);
+    state.objectGrip.quaternion.identity();
+    state.objectGrip.scale.set(1, 1, 1);
+  }
 
   function detach(state) {
+    resetObjectGrip(state);
     if (state.handAnchor) state.grip.remove(state.handAnchor);
     state.handAnchor = null;
     state.handRoot = null;
+    state.gripSocket = null;
     state.mixerState = null;
   }
 
@@ -91,8 +108,20 @@ export async function createVRHands({
     anchor.add(root);
     state.grip.add(anchor);
 
+    const socketName = handedness === 'left' ? 'b_l_grip' : 'b_r_grip';
+    const gripSocket = root.getObjectByName(socketName);
+    if (gripSocket) {
+      gripSocket.add(state.objectGrip);
+      state.objectGrip.position.set(0, 0, 0);
+      state.objectGrip.quaternion.identity();
+      state.objectGrip.scale.set(1, 1, 1);
+    } else {
+      onError(`Missing ${socketName}; held objects will fall back to the controller wrist origin`);
+    }
+
     state.handAnchor = anchor;
     state.handRoot = root;
+    state.gripSocket = gripSocket || null;
     state.mixerState = createActions(root, gltf.animations);
     setPose(state.mixerState, 'Open', 0);
   }
@@ -101,6 +130,7 @@ export async function createVRHands({
     state.controller.addEventListener('connected', (event) => {
       state.inputSource = event.data;
       state.handedness = event.data.handedness || '';
+      state.objectGrip.name = `${state.handedness || 'unknown'}-held-object-anchor`;
       if (state.handedness === 'left' || state.handedness === 'right') {
         attach(state, state.handedness);
       }
@@ -137,5 +167,9 @@ export async function createVRHands({
     }
   }
 
-  return { update, states };
+  return {
+    update,
+    states,
+    objectGrips: states.map((state) => state.objectGrip)
+  };
 }
