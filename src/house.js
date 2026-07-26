@@ -2,7 +2,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { HOUSE, SCALE } from './config.js';
 
 export function createHouse(scene, MAT) {
-  const { width: WIDTH, depth: DEPTH, porchDepth: PORCH_DEPTH, wallHeight: WALL_H,
+  const { width: WIDTH, depth: DEPTH, wallHeight: WALL_H,
     wallThickness: WALL_T, slabHeight: SLAB_H } = HOUSE;
 
   const xL = -WIDTH / 2;
@@ -16,7 +16,7 @@ export function createHouse(scene, MAT) {
   const zLivingKitchen = zF + 16 * SCALE;
 
   const house = new THREE.Group();
-  house.name = 'House';
+  house.name = 'Apartment';
   scene.add(house);
   const collisionSegments = [];
   const jointQueue = new Map();
@@ -30,10 +30,11 @@ export function createHouse(scene, MAT) {
     return mesh;
   }
 
-  box(WIDTH, 0.12, DEPTH, 0, -0.06, 0, MAT.foundation);
+  // The playable apartment stays at local-floor height. The heavy slab and building
+  // mass below it sell the fact that this is a mid-rise floor rather than a ground house.
+  box(WIDTH + 0.55, 0.34, DEPTH + 0.55, 0, -0.17, 0, MAT.foundation);
   box(WIDTH, SLAB_H, DEPTH, 0, SLAB_H / 2, 0, MAT.floor);
-  box(WIDTH, 0.12, PORCH_DEPTH, 0, 0.02, zF - PORCH_DEPTH / 2, MAT.concrete, false);
-  box(12 * SCALE, 0.12, 10 * SCALE, xR - 6 * SCALE, 0.02, zB + 5 * SCALE, MAT.concrete, false);
+  box(WIDTH + 1.2, 18, DEPTH + 1.2, 0, -9.34, 0, MAT.foundation, false);
 
   function pointAlong(x1, z1, x2, z2, distance) {
     const dx = x2 - x1;
@@ -194,10 +195,9 @@ export function createHouse(scene, MAT) {
   const windowGap = (at, width = 4 * SCALE, bottom = 0.86, height = 1.18) =>
     ({ kind: 'window', at, width, bottom, height });
 
-  wallRun(xL, zF, xR, zF, [
-    windowGap(5 * SCALE, 4 * SCALE), door(16 * SCALE, 3 * SCALE),
-    windowGap(23 * SCALE, 5 * SCALE), windowGap(29.5 * SCALE, 3.5 * SCALE)
-  ]);
+  // The corridor-facing wall now has only the apartment entry. Exterior windows remain
+  // on the other three sides, and the rear door becomes the balcony door.
+  wallRun(xL, zF, xR, zF, [door(16 * SCALE, 3 * SCALE)]);
   wallRun(xR, zF, xR, zB, [windowGap(5 * SCALE), windowGap(13 * SCALE), windowGap(25 * SCALE)]);
   wallRun(xR, zB, xL, zB, [door(5 * SCALE, 3 * SCALE), windowGap(11 * SCALE), windowGap(26 * SCALE)]);
   wallRun(xL, zB, xL, zF, [windowGap(5 * SCALE), windowGap(16 * SCALE), windowGap(27 * SCALE)]);
@@ -235,6 +235,8 @@ export function createHouse(scene, MAT) {
 
   const ceilingY = SLAB_H + WALL_H - 0.045;
   box(WIDTH - WALL_T * 1.2, 0.09, DEPTH - WALL_T * 1.2, 0, ceilingY, 0, MAT.ceiling, true);
+  // Flat structural slab and a hint of the apartment above replace the suburban roof.
+  box(WIDTH + 0.7, 0.32, DEPTH + 0.7, 0, ceilingY + 0.21, 0, MAT.foundation, true);
 
   function addDownlight(x, z, intensity = 24) {
     const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.025, 18), MAT.downlight);
@@ -256,83 +258,118 @@ export function createHouse(scene, MAT) {
   addDownlight((xHallWall + bathRight) / 2, (bathFront + bathBack) / 2, 18);
   addDownlight(xHallWall + 2.25 * SCALE, (bathBack + laundryBack) / 2, 16);
 
-  function addGableRoof() {
-    const roofGroup = new THREE.Group();
-    roofGroup.name = 'Roof';
-    house.add(roofGroup);
-    const overhang = 0.48;
-    const halfSpan = WIDTH / 2 + overhang;
-    const roofDepth = DEPTH + overhang * 2;
-    const eaveY = SLAB_H + WALL_H + 0.12;
-    const rise = 1.65;
-    const pitch = Math.atan2(rise, halfSpan);
-    const slopeLength = Math.hypot(halfSpan, rise);
-    const panelThickness = 0.14;
+  function addApartmentCorridor() {
+    const corridor = new THREE.Group();
+    corridor.name = 'Apartment_Corridor';
+    house.add(corridor);
 
-    const leftPanel = box(slopeLength, panelThickness, roofDepth, -halfSpan / 2,
-      eaveY + rise / 2, 0, MAT.roof, true, roofGroup);
-    leftPanel.rotation.z = pitch;
-    const rightPanel = box(slopeLength, panelThickness, roofDepth, halfSpan / 2,
-      eaveY + rise / 2, 0, MAT.roof, true, roofGroup);
-    rightPanel.rotation.z = -pitch;
+    const extraWidth = 0.7;
+    const minX = xL - extraWidth;
+    const maxX = xR + extraWidth;
+    const width = maxX - minX;
+    const nearZ = zF - WALL_T * 0.45;
+    const farZ = zF - 3.35;
+    const depth = nearZ - farZ;
+    const centreZ = (nearZ + farZ) / 2;
 
-    const gableShape = new THREE.Shape();
-    gableShape.moveTo(-WIDTH / 2, 0);
-    gableShape.lineTo(WIDTH / 2, 0);
-    gableShape.lineTo(0, rise);
-    gableShape.closePath();
-    const gableGeometry = new THREE.ExtrudeGeometry(gableShape, {
-      depth: WALL_T, bevelEnabled: false, curveSegments: 1
-    });
-    const frontGable = new THREE.Mesh(gableGeometry, MAT.outer);
-    frontGable.position.set(0, eaveY, zF - WALL_T / 2);
-    frontGable.castShadow = true;
-    frontGable.receiveShadow = true;
-    roofGroup.add(frontGable);
-    const backGable = frontGable.clone();
-    backGable.position.z = zB - WALL_T / 2;
-    roofGroup.add(backGable);
+    box(width, 0.18, depth, 0, 0.05, centreZ, MAT.concrete, false, corridor);
+    box(width, 0.22, depth, 0, ceilingY + 0.14, centreZ, MAT.foundation, true, corridor);
+    box(width, WALL_H, WALL_T, 0, SLAB_H + WALL_H / 2, farZ, MAT.inner, true, corridor);
+    box(WALL_T, WALL_H, depth, minX, SLAB_H + WALL_H / 2, centreZ, MAT.inner, true, corridor);
+    box(WALL_T, WALL_H, depth, maxX, SLAB_H + WALL_H / 2, centreZ, MAT.inner, true, corridor);
 
-    box(0.16, 0.2, roofDepth, -halfSpan, eaveY - 0.03, 0, MAT.trim, true, roofGroup);
-    box(0.16, 0.2, roofDepth, halfSpan, eaveY - 0.03, 0, MAT.trim, true, roofGroup);
+    addCollision(minX, farZ, maxX, farZ);
+    addCollision(minX, farZ, minX, nearZ);
+    addCollision(maxX, farZ, maxX, nearZ);
 
-    for (const z of [zF - overhang, zB + overhang]) {
-      const leftBarge = box(slopeLength, 0.15, 0.12, -halfSpan / 2,
-        eaveY + rise / 2, z, MAT.trim, true, roofGroup);
-      leftBarge.rotation.z = pitch;
-      const rightBarge = box(slopeLength, 0.15, 0.12, halfSpan / 2,
-        eaveY + rise / 2, z, MAT.trim, true, roofGroup);
-      rightBarge.rotation.z = -pitch;
+    // Placeholder neighbouring apartment doors and lift doors make the hall readable now,
+    // while leaving the whole area ready for later expansion into a proper shared level.
+    const doorPanelZ = farZ + WALL_T / 2 + 0.022;
+    for (const x of [-4.55, 3.25]) {
+      box(1.08, 2.12, 0.055, x, SLAB_H + 1.06, doorPanelZ, MAT.timber, true, corridor);
+      box(1.2, 0.07, 0.08, x, SLAB_H + 2.15, doorPanelZ + 0.01, MAT.trim, false, corridor);
     }
 
-    for (const x of [-halfSpan - 0.03, halfSpan + 0.03]) {
-      const gutter = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, roofDepth, 12), MAT.gutter);
-      gutter.rotation.x = Math.PI / 2;
-      gutter.position.set(x, eaveY - 0.13, 0);
-      gutter.castShadow = true;
-      gutter.receiveShadow = true;
-      roofGroup.add(gutter);
+    const liftX = maxX - 1.35;
+    box(2.15, 2.3, 0.06, liftX, SLAB_H + 1.15, doorPanelZ, MAT.gutter, true, corridor);
+    box(0.035, 2.24, 0.075, liftX, SLAB_H + 1.15, doorPanelZ + 0.012, MAT.foundation, false, corridor);
+    box(2.35, 0.09, 0.09, liftX, SLAB_H + 2.34, doorPanelZ + 0.01, MAT.trim, false, corridor);
+
+    addDownlight(-WIDTH * 0.28, centreZ, 18);
+    addDownlight(0, centreZ, 18);
+    addDownlight(WIDTH * 0.28, centreZ, 18);
+  }
+
+  function addBalcony() {
+    const balcony = new THREE.Group();
+    balcony.name = 'Rear_Balcony';
+    house.add(balcony);
+
+    const width = 12 * SCALE;
+    const depth = 2.45;
+    const centreX = xR - 6 * SCALE;
+    const minX = centreX - width / 2;
+    const maxX = centreX + width / 2;
+    const outerZ = zB + depth;
+    const centreZ = zB + depth / 2;
+    const railY = SLAB_H + 0.57;
+
+    box(width, 0.18, depth, centreX, 0.05, centreZ, MAT.concrete, false, balcony);
+    box(width + 0.18, 0.09, 0.09, centreX, SLAB_H + 1.13, outerZ, MAT.gutter, true, balcony);
+    box(0.09, 1.08, 0.09, minX, railY, outerZ, MAT.gutter, true, balcony);
+    box(0.09, 1.08, 0.09, maxX, railY, outerZ, MAT.gutter, true, balcony);
+
+    const glassHeight = 0.86;
+    const glassY = SLAB_H + glassHeight / 2 + 0.12;
+    const outerGlass = box(width - 0.18, glassHeight, 0.035, centreX, glassY, outerZ - 0.025,
+      MAT.glass, false, balcony);
+    outerGlass.castShadow = false;
+    for (const x of [minX, maxX]) {
+      box(0.035, glassHeight, depth - 0.12, x, glassY, centreZ, MAT.glass, false, balcony);
+      box(0.09, 0.09, depth, x, SLAB_H + 1.13, centreZ, MAT.gutter, true, balcony);
     }
 
-    for (const [x, z] of [[-halfSpan - 0.03, zF - overhang + 0.18],
-      [halfSpan + 0.03, zB + overhang - 0.18]]) {
-      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, WALL_H + 0.12, 12), MAT.gutter);
-      pipe.position.set(x, SLAB_H + WALL_H / 2, z);
-      pipe.castShadow = true;
-      roofGroup.add(pipe);
+    addCollision(minX, outerZ, maxX, outerZ);
+    addCollision(minX, zB, minX, outerZ);
+    addCollision(maxX, zB, maxX, outerZ);
+  }
+
+  function addCityView() {
+    const city = new THREE.Group();
+    city.name = 'LowPoly_City_View';
+    scene.add(city);
+
+    const streetLevel = -18.4;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), MAT.foundation);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = streetLevel;
+    ground.receiveShadow = true;
+    city.add(ground);
+
+    const towers = [
+      [-34, -34, 11, 13, 25], [-17, -42, 9, 11, 32], [8, -46, 13, 10, 29],
+      [29, -35, 12, 15, 36], [43, -10, 10, 12, 27], [39, 22, 14, 11, 34],
+      [22, 40, 12, 14, 31], [-4, 45, 15, 12, 39], [-29, 36, 13, 15, 28],
+      [-44, 10, 10, 13, 35], [18, 24, 8, 9, 22], [-20, 23, 9, 10, 24]
+    ];
+
+    for (let i = 0; i < towers.length; i++) {
+      const [x, z, w, d, h] = towers[i];
+      const material = i % 3 === 0 ? MAT.outer : i % 3 === 1 ? MAT.concrete : MAT.foundation;
+      box(w, h, d, x, streetLevel + h / 2, z, material, true, city);
+
+      // A few cheap bright bands read as windows from the apartment without needing textures.
+      const bandCount = Math.max(2, Math.floor(h / 6));
+      for (let band = 1; band < bandCount; band++) {
+        const y = streetLevel + band * (h / bandCount);
+        box(w + 0.035, 0.13, d + 0.035, x, y, z, MAT.trim, false, city);
+      }
     }
   }
-  addGableRoof();
 
-  const outdoors = new THREE.Mesh(new THREE.PlaneGeometry(110, 110), MAT.grass);
-  outdoors.rotation.x = -Math.PI / 2;
-  outdoors.position.y = -0.13;
-  outdoors.receiveShadow = true;
-  scene.add(outdoors);
-  const path = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.04, 8.5), MAT.concrete);
-  path.position.set(-0.15, -0.04, zF - PORCH_DEPTH - 4.2);
-  path.receiveShadow = true;
-  scene.add(path);
+  addApartmentCorridor();
+  addBalcony();
+  addCityView();
 
   return {
     root: house,
