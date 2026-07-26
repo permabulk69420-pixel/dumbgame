@@ -16,6 +16,8 @@ const HAND_GRIP_OFFSETS = Object.freeze({
   })
 });
 
+const gripMatrix = new THREE.Matrix4();
+
 function createActions(root, clips) {
   const mixer = new THREE.AnimationMixer(root);
   const actions = new Map();
@@ -79,6 +81,24 @@ export async function createVRHands({
     state.objectGrip.scale.set(1, 1, 1);
   }
 
+  function syncObjectGrip(state) {
+    if (!state.gripSocket) return;
+
+    // Keep this anchor under the stable WebXR grip node, but copy the live palm
+    // socket transform into that space every frame. This avoids skeletal-parenting
+    // quirks and guarantees held objects follow the centre of the closed hand,
+    // rather than silently remaining at the controller/wrist origin.
+    if (state.objectGrip.parent !== state.grip) state.grip.add(state.objectGrip);
+    state.grip.updateWorldMatrix(true, false);
+    state.gripSocket.updateWorldMatrix(true, false);
+    gripMatrix
+      .copy(state.grip.matrixWorld)
+      .invert()
+      .multiply(state.gripSocket.matrixWorld)
+      .decompose(state.objectGrip.position, state.objectGrip.quaternion, state.objectGrip.scale);
+    state.objectGrip.updateMatrixWorld(true);
+  }
+
   function detach(state) {
     resetObjectGrip(state);
     if (state.handAnchor) state.grip.remove(state.handAnchor);
@@ -110,12 +130,7 @@ export async function createVRHands({
 
     const socketName = handedness === 'left' ? 'b_l_grip' : 'b_r_grip';
     const gripSocket = root.getObjectByName(socketName);
-    if (gripSocket) {
-      gripSocket.add(state.objectGrip);
-      state.objectGrip.position.set(0, 0, 0);
-      state.objectGrip.quaternion.identity();
-      state.objectGrip.scale.set(1, 1, 1);
-    } else {
+    if (!gripSocket) {
       onError(`Missing ${socketName}; held objects will fall back to the controller wrist origin`);
     }
 
@@ -124,6 +139,7 @@ export async function createVRHands({
     state.gripSocket = gripSocket || null;
     state.mixerState = createActions(root, gltf.animations);
     setPose(state.mixerState, 'Open', 0);
+    syncObjectGrip(state);
   }
 
   for (const state of states) {
@@ -164,6 +180,7 @@ export async function createVRHands({
 
       // Paused, scrubbed hand actions still require the mixer tick every frame.
       state.mixerState.mixer.update(dt);
+      syncObjectGrip(state);
     }
   }
 
