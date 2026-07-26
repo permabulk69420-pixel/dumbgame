@@ -4,7 +4,7 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js?v=2';
 import { createVRHands } from './hands.js?v=6';
-import { loadDecorAssets } from './assets.js?v=2';
+import { loadDecorAssets } from './assets.js?v=3';
 import { loadPistol } from './weapons/pistol.js?v=3';
 import { loadTorch } from './tools/torch.js?v=3';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=2';
