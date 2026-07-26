@@ -11,6 +11,7 @@ const POKE_LATERAL_RADIUS = 0.018;
 const POKE_CONTACT_HEIGHT = 0.016;
 const POKE_PRESS_DEPTH = 0.012;
 const POKE_TRIGGER_AMOUNT = 0.62;
+const TORCH_GRIP_PITCH = -Math.PI / 2;
 
 const tempMatrix = new THREE.Matrix4();
 const tempFingerWorld = new THREE.Vector3();
@@ -114,6 +115,10 @@ export async function loadTorch({
   const lightOrigin = requireNode(root, 'Light_Origin');
   const powerButton = requireNode(root, 'PowerButton');
   const led = root.getObjectByName('Torch_LED') || lightOrigin;
+
+  // The exported locator put the torch length through the fist. Pitching the
+  // locator down makes its inverse attachment rotate the torch body up by 90°.
+  gripPoint.rotateX(TORCH_GRIP_PITCH);
   const gripMatrix = relativeMatrix(root, gripPoint);
   const buttonRestY = powerButton.position.y;
 
@@ -212,7 +217,6 @@ export async function loadTorch({
 
     if (!touching || targetPress < 0.16) pokeLatched = false;
 
-    // Follow the fingertip immediately while pressing, then spring back smoothly.
     if (targetPress >= buttonPressAmount) {
       buttonPressAmount = targetPress;
     } else {
@@ -256,8 +260,6 @@ export async function loadTorch({
 
   function update(dt) {
     if (holder) {
-      // A/X on the torch hand normally toggles pointing globally. Suppress that hand;
-      // the free hand is the one intended to enter point/poke mode.
       const holderMode = controllerModes?.getState?.(holder.handedness);
       if (holderMode?.primaryPressed && controllerModes?.isPointing?.(holder.handedness)) {
         controllerModes.setPointing(holder.handedness, false);
