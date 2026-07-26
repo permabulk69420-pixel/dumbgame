@@ -1,11 +1,11 @@
 import { createWorld } from './scene.js';
 import { createMaterials } from './materials.js';
-import { createHouse } from './house.js';
+import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js';
 import { createLocomotion } from './locomotion.js';
 import { createVRHands } from './hands.js?v=5';
 import { loadDecorAssets } from './assets.js';
-import { loadPistol } from './weapons/pistol.js';
+import { loadPistol } from './weapons/pistol.js?v=2';
 import { GAME_TIME, INTERACTION } from './config.js';
 import { createControllerModes } from './input/controller-modes.js';
 import { createGameState } from './state/game-state.js';
@@ -110,7 +110,7 @@ handsReady.then((handsSystem) => loadPistol({
   pistol = value;
 }).catch((error) => {
   console.error('Pistol failed to load', error);
-  status.textContent = 'House loaded; the pistol failed to load.';
+  status.textContent = 'Apartment loaded; the pistol failed to load.';
 });
 
 world.renderer.xr.addEventListener('sessionstart', () => {
