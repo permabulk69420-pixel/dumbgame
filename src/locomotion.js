@@ -41,6 +41,15 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     return true;
   }
 
+  function isPlacementStickCaptured(handedness) {
+    const placeables = placement?.getPlaceables?.() || [];
+    return placeables.some((root) => {
+      const interactionState = root?.userData?.heldBy;
+      return interactionState?.handedness === handedness &&
+        interactionState.placementGrabbed === root;
+    });
+  }
+
   function update(dt) {
     const session = renderer.xr.getSession();
     if (!session) return;
@@ -54,12 +63,16 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
 
     const left = thumbstick(leftSource);
     const rightInput = thumbstick(rightSource);
-    const leftBusy = placement?.isHandBusy('left') ?? false;
-    const rightBusy = placement?.isHandBusy('right') ?? false;
 
-    const strafe = leftBusy ? 0 : deadzone(left.x);
-    const advance = leftBusy ? 0 : deadzone(left.y);
-    const turn = rightBusy ? 0 : deadzone(rightInput.x);
+    // Gameplay grabs such as the pistol and torch must not consume either stick.
+    // Only active furniture placement captures a hand's stick because that mode uses
+    // the same axes for object rotation and reach adjustment.
+    const leftCaptured = isPlacementStickCaptured('left');
+    const rightCaptured = isPlacementStickCaptured('right');
+
+    const strafe = leftCaptured ? 0 : deadzone(left.x);
+    const advance = leftCaptured ? 0 : deadzone(left.y);
+    const turn = rightCaptured ? 0 : deadzone(rightInput.x);
 
     rig.rotation.y -= turn * PLAYER.turnSpeed * dt;
     if (!strafe && !advance) return;
