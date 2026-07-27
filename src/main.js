@@ -4,15 +4,16 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=3';
 import { createVRHands } from './hands.js?v=8';
-import { loadDecorAssets } from './assets.js?v=8';
+import { loadDecorAssets } from './assets.js?v=9';
 import { loadPistol } from './weapons/pistol.js?v=4';
 import { loadTorch } from './tools/torch.js?v=4';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
-import { GAME_TIME, INTERACTION } from './config.js?v=7';
+import { ASSETS, GAME_TIME, INTERACTION } from './config.js?v=8';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
-import { createDayNightCycle } from './time/day-night-cycle.js?v=2';
+import { createDayNightCycle } from './time/day-night-cycle.js?v=3';
+import { createAudioManager } from './audio/audio-manager.js?v=1';
 import { createEventScheduler } from './story/event-scheduler.js';
 import {
   createWakeSequence,
@@ -53,9 +54,9 @@ const dayNight = createDayNightCycle({
   renderer: world.renderer,
   lights: world.lights,
   houseRoot: house.root,
-  gameState,
-  camera: world.camera
+  gameState
 });
+const audio = createAudioManager({ wakeMusicUrl: ASSETS.wakeMusic });
 const events = createEventScheduler({ gameState });
 
 const controllerModes = createControllerModes({
@@ -117,7 +118,7 @@ let hands = {
   setVisible() { return false; },
   isVisible() { return false; }
 };
-let decor = { update() {}, bed: null, bedside: null, bat: null };
+let decor = { update() {}, bed: null, bedside: null, bat: null, lightSwitches: null };
 let pistol = { update() {} };
 let torch = { update() {} };
 
@@ -212,6 +213,8 @@ handsReady.then((handsSystem) => loadDecorAssets({
   scene: world.scene,
   placement,
   grips: handsSystem?.objectGrips || world.grips,
+  hands: handsSystem,
+  lighting: dayNight,
   controllerModes,
   floorY: house.floorY,
   statusElement: status,
@@ -221,6 +224,9 @@ handsReady.then((handsSystem) => loadDecorAssets({
   disableDynamicShadowCasting(world.scene.getObjectByName('ComputerDesk'));
   disableDynamicShadowCasting(value.bedside?.root);
   disableDynamicShadowCasting(value.bat?.root);
+  for (const switchRoot of value.lightSwitches?.roots || []) {
+    disableDynamicShadowCasting(switchRoot);
+  }
   world.refreshShadows?.();
 }).catch(console.error);
 
@@ -287,7 +293,9 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   const openingComplete = gameState.read().completedEvents.includes(WAKE_SEQUENCE_EVENT_ID);
   if (publishedSetup && !openingComplete) {
     const started = wakeSequence.start(publishedSetup, { onComplete: finishOpeningStoryBeat });
-    if (!started) {
+    if (started) {
+      void audio.playWakeMusic({ restart: true });
+    } else {
       hands.setVisible(true);
       status.textContent = 'Story Mode · wake sequence could not start · using the normal apartment spawn';
     }
@@ -301,6 +309,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
 
 world.renderer.xr.addEventListener('sessionend', () => {
   wakeSequence.cancel();
+  audio.stopWakeMusic();
   if (isCreativeMode) wakeAuthoring.setVisible(true);
   world.rig.position.set(0, 0, 0);
   world.rig.rotation.set(0, 0, 0);
@@ -310,7 +319,6 @@ world.renderer.xr.addEventListener('sessionend', () => {
   status.textContent = `${gameModeLabel} · left stick moves, right stick turns smoothly.`;
 });
 
-// Stable hooks for beds, computers, doors, story scripts and temporary decorating tools.
 window.game = {
   mode: gameMode,
   startAction: startSelection.action,
@@ -338,6 +346,12 @@ window.game = {
   getBedroomBed: () => decor.bed || null,
   getBedsideSetup: () => decor.bedside || null,
   getBedroomBat: () => decor.bat || null,
+  getLightSwitches: () => decor.lightSwitches || null,
+  isLightOn: dayNight.isLightZoneEnabled,
+  setLightOn: dayNight.setLightZoneEnabled,
+  toggleLight: dayNight.toggleLightZone,
+  setAudioVolume: audio.setVolume,
+  getAudioVolumes: audio.getVolumes,
   previewWakeSequence: wakeAuthoring.preview,
   publishWakeSetup: wakeAuthoring.publish,
   readWakeSetup: readPublishedWakeSetup,
@@ -349,7 +363,10 @@ window.game = {
   resetGameState: gameState.reset
 };
 
-window.addEventListener('pagehide', () => gameState.save());
+window.addEventListener('pagehide', () => {
+  gameState.save();
+  audio.dispose();
+});
 
 loading.remove();
 let lastTime = performance.now();
