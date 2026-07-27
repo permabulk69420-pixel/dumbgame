@@ -4,9 +4,9 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=3';
 import { createVRHands } from './hands.js?v=8';
-import { loadDecorAssets } from './assets.js?v=10';
-import { loadPistol } from './weapons/pistol.js?v=4';
-import { loadTorch } from './tools/torch.js?v=4';
+import { loadDecorAssets } from './assets.js?v=11';
+import { loadPistol } from './weapons/pistol.js?v=5';
+import { loadTorch } from './tools/torch.js?v=5';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
 import { ASSETS, GAME_TIME, INTERACTION } from './config.js?v=8';
 import { createControllerModes } from './input/controller-modes.js?v=2';
@@ -14,6 +14,8 @@ import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js?v=3';
 import { createAudioManager } from './audio/audio-manager.js?v=1';
+import { createPhysicsWorld } from './physics/physics-world.js?v=1';
+import { registerApartmentShell } from './physics/apartment-colliders.js?v=1';
 import { createEventScheduler } from './story/event-scheduler.js';
 import {
   createWakeSequence,
@@ -43,6 +45,8 @@ const placementStorageKey = isCreativeMode
 const world = createWorld(app);
 const materials = createMaterials();
 const house = createHouse(world.scene, materials);
+const physics = await createPhysicsWorld();
+registerApartmentShell(physics, house);
 
 const gameState = createGameState({ storageKey: stateStorageKey });
 const clock = createGameClock({
@@ -209,9 +213,10 @@ const handsReady = createVRHands({
   return null;
 });
 
-handsReady.then((handsSystem) => loadDecorAssets({
+const decorReady = handsReady.then((handsSystem) => loadDecorAssets({
   scene: world.scene,
   placement,
+  physics,
   grips: handsSystem?.objectGrips || world.grips,
   hands: handsSystem,
   lighting: dayNight,
@@ -228,11 +233,16 @@ handsReady.then((handsSystem) => loadDecorAssets({
     disableDynamicShadowCasting(switchRoot);
   }
   world.refreshShadows?.();
-}).catch(console.error);
+  return value;
+}).catch((error) => {
+  console.error('Apartment decor failed to load', error);
+  return null;
+});
 
-handsReady.then((handsSystem) => loadPistol({
+Promise.all([handsReady, decorReady]).then(([handsSystem]) => loadPistol({
   scene: world.scene,
   placement,
+  physics,
   grips: handsSystem?.objectGrips || world.grips,
   controllerModes,
   floorY: house.floorY,
@@ -247,9 +257,10 @@ handsReady.then((handsSystem) => loadPistol({
   status.textContent = 'Apartment loaded; the pistol failed to load.';
 });
 
-handsReady.then((handsSystem) => loadTorch({
+Promise.all([handsReady, decorReady]).then(([handsSystem]) => loadTorch({
   scene: world.scene,
   placement,
+  physics,
   grips: handsSystem?.objectGrips || world.grips,
   hands: handsSystem,
   controllerModes,
@@ -350,6 +361,7 @@ window.game = {
   isLightOn: dayNight.isLightZoneEnabled,
   setLightOn: dayNight.setLightZoneEnabled,
   toggleLight: dayNight.toggleLightZone,
+  getPhysicsStats: physics.getStats,
   setAudioVolume: audio.setVolume,
   getAudioVolumes: audio.getVolumes,
   previewWakeSequence: wakeAuthoring.preview,
@@ -366,6 +378,7 @@ window.game = {
 window.addEventListener('pagehide', () => {
   gameState.save();
   audio.dispose();
+  physics.dispose();
 });
 
 loading.remove();
@@ -396,6 +409,7 @@ world.renderer.setAnimationLoop((time) => {
   pistol.update(dt);
   torch.update(dt);
   entryDoor.update(dt);
+  physics.update(dt);
   updateIntensityManagedLights();
 
   if (world.renderer.xr.isPresenting) {
