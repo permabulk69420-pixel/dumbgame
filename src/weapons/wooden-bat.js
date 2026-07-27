@@ -1,8 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=7';
+import { ASSETS } from '../config.js?v=8';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 
-const GRAVITY = 7.5;
 const SUPPORT_PROXY_RADIUS = 0.052;
 const ONE_HAND_GRIP_FLIP = Math.PI;
 
@@ -40,24 +39,11 @@ function attachLocatorToGrip(root, locatorMatrix, grip) {
   root.updateMatrixWorld(true);
 }
 
-function settleOnFloor(root, floorY, velocity, dt, bounds) {
-  velocity.y -= GRAVITY * dt;
-  root.position.addScaledVector(velocity, dt);
-  root.updateWorldMatrix(true, true);
-  bounds.setFromObject(root);
-  if (bounds.min.y <= floorY) {
-    root.position.y += floorY - bounds.min.y;
-    velocity.set(0, 0, 0);
-    root.updateMatrixWorld(true);
-    return true;
-  }
-  return false;
-}
-
 export async function loadWoodenBat({
   scene,
   placement,
   grips,
+  physics = null,
   controllerModes = null,
   floorY = 0,
   statusElement = null
@@ -84,11 +70,24 @@ export async function loadWoodenBat({
   scene.add(root);
   placement.registerPlaceable(root, 'bedroom-wooden-bat', { floorY });
 
-  const velocity = new THREE.Vector3();
-  const bounds = new THREE.Box3();
+  const physicsBody = physics?.registerDynamicObject?.({
+    root,
+    collider: {
+      shape: 'capsule',
+      halfHeight: 0.38,
+      radius: 0.038,
+      translation: [0, 0.30, 0]
+    },
+    mass: 0.72,
+    friction: 0.72,
+    restitution: 0.08,
+    linearDamping: 0.18,
+    angularDamping: 0.34,
+    ccd: true
+  }) || null;
+
   let holder = null;
   let support = null;
-  let falling = false;
   let unregisterSupport = null;
 
   const supportProxy = new THREE.Mesh(
@@ -111,6 +110,10 @@ export async function loadWoodenBat({
   const setStatus = (text) => {
     if (statusElement) statusElement.textContent = text;
   };
+
+  function setPhysicsHeld(value) {
+    root.userData.physicsHeld = Boolean(value);
+  }
 
   function updateSupportProxy() {
     if (!supportProxy.parent) return;
@@ -160,9 +163,8 @@ export async function loadWoodenBat({
     scene.attach(root);
     holder = null;
     support = null;
+    setPhysicsHeld(false);
     disableSupportInteraction();
-    falling = true;
-    velocity.set(0, -0.12, 0);
     setStatus('Bat dropped · point at the handle and hold grip to pick it up');
   }
 
@@ -179,6 +181,7 @@ export async function loadWoodenBat({
         if (!grip) return false;
         scene.attach(root);
         support = { handedness, grip, promoted: false };
+        setPhysicsHeld(true);
         controllerModes?.setPointing?.(handedness, false);
         updateTwoHandPose();
         setStatus('Bat held with two hands · release either grip to return to one hand');
@@ -210,8 +213,7 @@ export async function loadWoodenBat({
       if (!grip) return false;
       holder = { handedness, grip };
       support = null;
-      falling = false;
-      velocity.set(0, 0, 0);
+      setPhysicsHeld(true);
       controllerModes?.setPointing?.(handedness, false);
       attachLocatorToGrip(root, mainGripMatrix, grip);
       enableSupportInteraction();
@@ -226,6 +228,7 @@ export async function loadWoodenBat({
         holder = { handedness: promoted.handedness, grip: promoted.grip };
         support = null;
         disableSupportInteraction();
+        setPhysicsHeld(true);
         attachLocatorToGrip(root, mainGripMatrix, holder.grip);
         setStatus('Bat transferred to the remaining hand');
         return;
@@ -234,23 +237,27 @@ export async function loadWoodenBat({
     }
   });
 
+  setPhysicsHeld(false);
+
   return {
     root,
     mainGripPoint,
     secondaryGripPoint,
     impactPoint,
     collisionAnchor,
-    update(dt) {
+    physicsBody,
+    update() {
       if (support) {
         updateTwoHandPose();
       } else if (holder) {
         updateSupportProxy();
       }
-      if (falling) falling = !settleOnFloor(root, floorY, velocity, dt, bounds);
     },
     isHeld: () => Boolean(holder),
     isTwoHanded: () => Boolean(support),
     dispose() {
+      setPhysicsHeld(false);
+      physicsBody?.dispose?.();
       unregisterMain();
       disableSupportInteraction();
       placement.unregisterPlaceable(root);
