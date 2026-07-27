@@ -5,6 +5,7 @@ export const WAKE_SEQUENCE_EVENT_ID = 'opening-wake-sequence';
 
 const POSE_NAMES = Object.freeze(['lying', 'sitting', 'standing']);
 const ONE = new THREE.Vector3(1, 1, 1);
+const UP = new THREE.Vector3(0, 1, 0);
 
 function smooth01(value) {
   const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -130,6 +131,14 @@ export function createWakeSequence({
   const rigLocalMatrix = new THREE.Matrix4();
   const posePosition = new THREE.Vector3();
   const poseQuaternion = new THREE.Quaternion();
+  const localHeadPosition = new THREE.Vector3();
+  const localHeadQuaternion = new THREE.Quaternion();
+  const localHeadScale = new THREE.Vector3();
+  const uprightRigPosition = new THREE.Vector3();
+  const uprightRigQuaternion = new THREE.Quaternion();
+  const rotatedHeadOffset = new THREE.Vector3();
+  const desiredEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const localEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
   let active = false;
   let phase = 'idle';
@@ -155,11 +164,27 @@ export function createWakeSequence({
     xrCamera.updateWorldMatrix(true, false);
 
     localHeadMatrix.copy(rig.matrixWorld).invert().multiply(xrCamera.matrixWorld);
+    localHeadMatrix.decompose(localHeadPosition, localHeadQuaternion, localHeadScale);
     posePosition.fromArray(pose.position);
     poseQuaternion.fromArray(pose.quaternion).normalize();
-    desiredHeadMatrix.compose(posePosition, poseQuaternion, ONE);
-    inverseLocalHeadMatrix.copy(localHeadMatrix).invert();
-    rigWorldMatrix.copy(desiredHeadMatrix).multiply(inverseLocalHeadMatrix);
+
+    if (poseName === 'lying') {
+      // The lying shot intentionally rotates the virtual world around the tracked head
+      // so looking forward maps to looking up at the authored ceiling direction.
+      desiredHeadMatrix.compose(posePosition, poseQuaternion, ONE);
+      inverseLocalHeadMatrix.copy(localHeadMatrix).invert();
+      rigWorldMatrix.copy(desiredHeadMatrix).multiply(inverseLocalHeadMatrix);
+    } else {
+      // Sitting and standing must put the world upright again. Match only yaw here;
+      // preserving pitch/roll would leave the whole apartment tilted if the player
+      // happened to blink while looking slightly up, down or sideways.
+      desiredEuler.setFromQuaternion(poseQuaternion, 'YXZ');
+      localEuler.setFromQuaternion(localHeadQuaternion, 'YXZ');
+      uprightRigQuaternion.setFromAxisAngle(UP, desiredEuler.y - localEuler.y);
+      rotatedHeadOffset.copy(localHeadPosition).applyQuaternion(uprightRigQuaternion);
+      uprightRigPosition.copy(posePosition).sub(rotatedHeadOffset);
+      rigWorldMatrix.compose(uprightRigPosition, uprightRigQuaternion, ONE);
+    }
 
     if (rig.parent) {
       rig.parent.updateWorldMatrix(true, false);
