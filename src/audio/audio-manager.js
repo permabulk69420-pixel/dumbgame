@@ -9,21 +9,34 @@ function clampVolume(value) {
   return Math.max(0, Math.min(1, Number(value) || 0));
 }
 
+function clampPlaybackRate(value) {
+  return Math.max(0.5, Math.min(2, Number(value) || 1));
+}
+
 export function createAudioManager({ wakeMusicUrl = null } = {}) {
   const volumes = { ...DEFAULT_VOLUMES };
   const tracks = new Set();
 
   function applyVolume(track) {
-    track.element.volume = clampVolume(volumes.master * volumes[track.channel]);
+    track.element.volume = clampVolume(volumes.master * volumes[track.channel] * track.gain);
   }
 
-  function createTrack(url, channel, { loop = false } = {}) {
+  function createTrack(url, channel, {
+    loop = false,
+    gain = 1,
+    playbackRate = 1,
+    preservePitch = true
+  } = {}) {
     if (!url) return null;
     const element = new Audio(url);
     element.preload = 'auto';
     element.loop = loop;
     element.crossOrigin = 'anonymous';
-    const track = { element, channel };
+    element.playbackRate = clampPlaybackRate(playbackRate);
+    if ('preservesPitch' in element) element.preservesPitch = preservePitch;
+    if ('mozPreservesPitch' in element) element.mozPreservesPitch = preservePitch;
+    if ('webkitPreservesPitch' in element) element.webkitPreservesPitch = preservePitch;
+    const track = { element, channel, gain: clampVolume(gain) };
     tracks.add(track);
     applyVolume(track);
     return track;
@@ -51,14 +64,15 @@ export function createAudioManager({ wakeMusicUrl = null } = {}) {
     return true;
   }
 
-  function playOneShot(url, channel) {
-    const track = createTrack(url, channel);
+  function playOneShot(url, channel, options = {}) {
+    const track = createTrack(url, channel, options);
     if (!track) return false;
     track.element.addEventListener('ended', () => {
       tracks.delete(track);
-      track.element.remove();
+      track.element.removeAttribute('src');
+      track.element.load();
     }, { once: true });
-    play(track, { restart: true });
+    void play(track, { restart: true });
     return true;
   }
 
@@ -72,8 +86,8 @@ export function createAudioManager({ wakeMusicUrl = null } = {}) {
   return {
     playWakeMusic: (options) => play(wakeMusic, options),
     stopWakeMusic: (options) => stop(wakeMusic, options),
-    playNarration: (url) => playOneShot(url, 'narration'),
-    playSfx: (url) => playOneShot(url, 'sfx'),
+    playNarration: (url, options) => playOneShot(url, 'narration', options),
+    playSfx: (url, options) => playOneShot(url, 'sfx', options),
     setVolume,
     getVolumes: () => ({ ...volumes }),
     dispose() {
