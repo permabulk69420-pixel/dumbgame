@@ -1,4 +1,4 @@
-import { ASSETS } from './config.js?v=7';
+import { ASSETS } from './config.js?v=8';
 import { loadGLB, prepareModel } from './asset-loader.js?v=2';
 import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
@@ -8,11 +8,14 @@ import { loadBedroomBed } from './furniture/bed-setup.js?v=1';
 import { loadBedsideSetup } from './furniture/bedside-setup.js?v=2';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
 import { loadWoodenBat } from './weapons/wooden-bat.js?v=3';
+import { loadApartmentLightSwitches } from './lighting/light-switches.js?v=1';
 
 export async function loadDecorAssets({
   scene,
   placement,
   grips = [],
+  hands = null,
+  lighting = null,
   controllerModes = null,
   floorY,
   statusElement,
@@ -23,6 +26,7 @@ export async function loadDecorAssets({
   let bedroomBed = null;
   let bedsideSetup = null;
   let woodenBat = null;
+  let lightSwitches = null;
 
   try {
     const gltf = await loadGLB(ASSETS.computerDesk);
@@ -46,9 +50,6 @@ export async function loadDecorAssets({
     updaters.push(computer.update);
     disposers.push(computer.dispose);
 
-    // Register the desk first, then its child props. The later registrations deliberately
-    // override the desk's placeable marker on each computer component, so the ray selects
-    // the exact monitor, keyboard, mouse or tower instead of always resolving to the desk.
     placement.registerPlaceable(desk, 'computer-desk', { floorY });
     const computerPlaceables = registerComputerPlaceables({
       placement,
@@ -80,9 +81,6 @@ export async function loadDecorAssets({
     const gltf = await loadGLB(ASSETS.couch);
     const couch = prepareModel(gltf.scene, { castShadow: true, receiveShadow: true });
     couch.name = 'TwoSeatBlackLeatherCouch';
-
-    // Against the living-room side wall, facing into the room. It remains a normal
-    // decoration-mode placeable, so this is only its first-run position.
     couch.position.set(5.55, floorY, -1.35);
     couch.rotation.y = Math.PI * 0.5;
     scene.add(couch);
@@ -142,6 +140,22 @@ export async function loadDecorAssets({
   }
 
   try {
+    lightSwitches = await loadApartmentLightSwitches({
+      scene,
+      placement,
+      hands,
+      lighting,
+      floorY,
+      statusElement
+    });
+    updaters.push(lightSwitches.update);
+    disposers.push(lightSwitches.dispose);
+  } catch (error) {
+    console.error('Apartment light switches failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the light switches failed to load.';
+  }
+
+  try {
     const entertainment = await loadEntertainmentSetup({
       scene,
       placement,
@@ -159,6 +173,7 @@ export async function loadDecorAssets({
     bed: bedroomBed,
     bedside: bedsideSetup,
     bat: woodenBat,
+    lightSwitches,
     update(dt) {
       for (const updater of updaters) updater(dt);
     },
