@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=4';
-import { loadGLB, prepareModel } from '../asset-loader.js';
+import { ASSETS } from '../config.js?v=8';
+import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
+import { registerTopSurfaceCollider } from '../physics/apartment-colliders.js?v=1';
 
 const BUTTON_TRAVEL = 0.003;
 const BUTTON_PRESS_SECONDS = 0.16;
@@ -87,11 +88,9 @@ function createTelevisionInteraction({ tvRoot, placement, statusElement }) {
   function setPowered(value) {
     powered = Boolean(value);
     applyPowerState();
-    if (statusElement) {
-      statusElement.textContent = powered
-        ? 'TV powered on · screen source can be added later'
-        : 'TV powered off';
-    }
+    if (statusElement) statusElement.textContent = powered
+      ? 'TV powered on · screen source can be added later'
+      : 'TV powered off';
     return powered;
   }
 
@@ -106,7 +105,6 @@ function createTelevisionInteraction({ tvRoot, placement, statusElement }) {
   });
 
   applyPowerState();
-
   return {
     update(dt) {
       pressRemaining = Math.max(0, pressRemaining - dt);
@@ -133,6 +131,7 @@ function createTelevisionInteraction({ tvRoot, placement, statusElement }) {
 export async function loadEntertainmentSetup({
   scene,
   placement,
+  physics = null,
   floorY,
   statusElement = null
 }) {
@@ -150,24 +149,26 @@ export async function loadEntertainmentSetup({
   const tvAnchor = requireNode(unit, 'TV_Placement_Anchor');
   requireNode(tv, 'TV_Assembly');
 
+  unit.position.set(0.98, floorY, -1.35);
+  unit.rotation.y = -Math.PI * 0.5;
+  scene.add(unit);
+  placement.registerPlaceable(unit, 'living-room-entertainment-setup', { floorY });
+
+  // Capture the cabinet top before the TV becomes a child, otherwise its screen top
+  // would incorrectly become the support surface for loose props.
+  const physicsHandle = registerTopSurfaceCollider(physics, unit, {
+    thickness: 0.055,
+    insetX: 0.025,
+    insetZ: 0.025,
+    friction: 0.84
+  });
+
   tv.position.set(0, 0, 0);
   tv.rotation.set(0, 0, 0);
   tv.scale.set(1, 1, 1);
   tvAnchor.add(tv);
 
-  // Against the living-room hall wall, opposite the couch. The cabinet and TV are
-  // one decoration-mode placeable, so moving the unit keeps the TV correctly mounted.
-  unit.position.set(0.98, floorY, -1.35);
-  unit.rotation.y = -Math.PI * 0.5;
-  scene.add(unit);
-
-  const television = createTelevisionInteraction({
-    tvRoot: tv,
-    placement,
-    statusElement
-  });
-
-  placement.registerPlaceable(unit, 'living-room-entertainment-setup', { floorY });
+  const television = createTelevisionInteraction({ tvRoot: tv, placement, statusElement });
 
   if (statusElement) {
     statusElement.textContent =
@@ -178,10 +179,9 @@ export async function loadEntertainmentSetup({
     root: unit,
     tv,
     television,
-    update(dt) {
-      television.update(dt);
-    },
+    update(dt) { television.update(dt); },
     dispose() {
+      physicsHandle?.dispose?.();
       television.dispose();
       placement.unregisterPlaceable(unit);
       unit.removeFromParent();
