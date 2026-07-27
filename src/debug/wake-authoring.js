@@ -1,10 +1,37 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { writePublishedWakeSetup } from '../story/wake-sequence.js?v=1';
+import { writePublishedWakeSetup } from '../story/wake-sequence.js?v=4';
 
 const MARKER_DEFINITIONS = Object.freeze([
-  { key: 'lying', label: 'LYING · LOOKING UP', colour: 0x6fd5ff, height: 0.74, offset: [-4.0, -0.7], pitch: Math.PI / 2 },
-  { key: 'sitting', label: 'SITTING', colour: 0xffc96f, height: 1.10, offset: [-3.2, -0.7], pitch: 0 },
-  { key: 'standing', label: 'STANDING', colour: 0x7dffad, height: 1.65, offset: [-2.45, -0.7], pitch: 0 }
+  {
+    key: 'lying',
+    label: 'LYING · LOOKING UP',
+    colour: 0x6fd5ff,
+    height: 0.82,
+    minY: 0.45,
+    maxY: 1.05,
+    offset: [-4.0, -0.7],
+    pitch: Math.PI / 2
+  },
+  {
+    key: 'sitting',
+    label: 'SITTING',
+    colour: 0xffc96f,
+    height: 1.15,
+    minY: 0.85,
+    maxY: 1.45,
+    offset: [-3.2, -0.7],
+    pitch: 0
+  },
+  {
+    key: 'standing',
+    label: 'STANDING · 1.65 M GAMEPLAY HEIGHT',
+    colour: 0x7dffad,
+    height: 1.65,
+    minY: 1.65,
+    maxY: 1.65,
+    offset: [-2.45, -0.7],
+    pitch: 0
+  }
 ]);
 
 function roundedRect(context, x, y, width, height, radius) {
@@ -79,6 +106,7 @@ function createPoseMarker(definition, spawn) {
     definition.height,
     spawn.z + definition.offset[1]
   );
+  root.userData.wakePoseKey = definition.key;
 
   const poseAnchor = new THREE.Group();
   poseAnchor.name = `Wake_${definition.key[0].toUpperCase()}${definition.key.slice(1)}_Anchor`;
@@ -138,12 +166,12 @@ function createPanel({ spawn, placement, onPreview, onPublish }) {
     metalness: 0.08
   });
   const backing = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.68, 0.045), backingMaterial);
-  backing.castShadow = true;
+  backing.castShadow = false;
   root.add(backing);
 
   const titleTexture = createCanvasTexture({
     title: 'WAKE AUTHORING',
-    subtitle: 'B/Y MOVE · STICK X ROTATE · STICK Y HEIGHT',
+    subtitle: 'STANDING HEIGHT LOCKED · LYING/SITTING ADJUSTABLE',
     accent: '#8bdcff',
     width: 1024,
     height: 300
@@ -240,10 +268,16 @@ export function createWakeAuthoring({
     scene.add(marker.root);
     placement.registerPlaceable(marker.root, `wake-marker-${definition.key}`, {
       allowVertical: true,
-      minY: 0.24,
-      maxY: 2.25,
+      minY: definition.minY,
+      maxY: definition.maxY,
       confineToBounds: true
     });
+
+    // Old saves could contain absurd heights from before the marker limits existed.
+    // Preserve X/Z and rotation, but clamp the authored eye height into the valid range.
+    marker.root.position.y = THREE.MathUtils.clamp(marker.root.position.y, definition.minY, definition.maxY);
+    marker.root.updateMatrixWorld(true);
+
     markers[definition.key] = marker;
     roots.push(marker.root);
   }
@@ -290,7 +324,7 @@ export function createWakeAuthoring({
   function publish() {
     try {
       const saved = writePublishedWakeSetup(captureSetup());
-      setStatus('Wake setup published · New Story will use these lying, sitting and standing poses.');
+      setStatus('Wake setup published · standing gameplay height is locked to 1.65 m.');
       return saved;
     } catch (error) {
       console.error('Wake setup could not be published.', error);
