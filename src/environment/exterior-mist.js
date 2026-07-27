@@ -13,6 +13,8 @@ const CLOUD_LAYERS = Object.freeze([
   { y: -9.5, opacity: 0.9, phase: 10.8 }
 ]);
 
+const mutedMistColour = new THREE.Color(0x87969d);
+
 function makeMistMaterial({ opacity, phase, side = THREE.BackSide }) {
   return new THREE.ShaderMaterial({
     name: 'Exterior_Mist_Material',
@@ -89,12 +91,13 @@ function makeMistMaterial({ opacity, phase, side = THREE.BackSide }) {
   });
 }
 
-function disposeObject(root) {
+function disposeObject(root, { disposeMaterials = true } = {}) {
   const geometries = new Set();
   const materials = new Set();
   root.traverse((object) => {
     if (!object.isMesh) return;
     if (object.geometry) geometries.add(object.geometry);
+    if (!disposeMaterials) return;
     const objectMaterials = Array.isArray(object.material) ? object.material : [object.material];
     for (const material of objectMaterials) {
       if (material) materials.add(material);
@@ -108,7 +111,9 @@ function removeOldCity(scene) {
   const city = scene.getObjectByName('LowPoly_City_View');
   if (!city) return false;
   city.removeFromParent();
-  disposeObject(city);
+  // City meshes reuse the apartment's shared material instances. Disposing only their
+  // geometry removes the old view without invalidating the walls, floors, or trim.
+  disposeObject(city, { disposeMaterials: false });
   return true;
 }
 
@@ -172,7 +177,7 @@ export function createExteriorMist({ scene }) {
     else colour.setHex(0x8fa3ad);
 
     // Slightly mute the sky colour so it reads as dense moisture rather than a flat skybox.
-    colour.lerp(new THREE.Color(0x87969d), 0.12);
+    colour.lerp(mutedMistColour, 0.12);
     for (const material of materials) {
       material.uniforms.uTime.value = elapsed;
       material.uniforms.uColour.value.copy(colour);
