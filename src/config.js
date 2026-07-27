@@ -28,6 +28,7 @@ export const ASSETS = Object.freeze({
   torch: './assets/models/tools/Generic_Handheld_Torch_v2_forward_button.glb',
   woodenBat: './assets/models/tools/Apartment_Wooden_Bat.glb?v=1',
   apartmentEntryDoor: './assets/models/architecture/Apartment_Entry_Door.glb?v=1',
+  apartmentInternalDoor: './assets/models/architecture/Apartment_Internal_Door.glb?v=1',
   apartmentWindow: './assets/models/architecture/Apartment_Sliding_Window.glb?v=1',
   wallLightSwitch: './assets/models/architecture/Basic_Wall_Light_Switch.glb?v=1',
   wakeMusic: './assets/audio/music/wake_sequence.mp3?v=1'
