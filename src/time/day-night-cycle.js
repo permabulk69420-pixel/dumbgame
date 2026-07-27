@@ -1,8 +1,11 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 
 const MINUTES_PER_DAY = 1440;
+const MAX_ACTIVE_INTERIOR_LIGHTS = 3;
+const INTERIOR_LIGHT_NIGHT_THRESHOLD = 0.08;
+const SHADOW_REFRESH_MINUTES = 30;
 
-export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameState }) {
+export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameState, camera = null }) {
   if (!scene || !renderer || !lights || !gameState) {
     throw new Error('createDayNightCycle requires scene, renderer, lights and gameState');
   }
@@ -11,6 +14,7 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
   houseRoot?.traverse((object) => {
     if (!object.isPointLight) return;
     object.userData.dayNightBaseIntensity ??= object.intensity;
+    object.visible = false;
     indoorLights.push(object);
   });
 
@@ -42,7 +46,40 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
   const whiteSun = new THREE.Color(0xffefd8);
   const coolMoon = new THREE.Color(0x91aede);
   const dayFill = new THREE.Color(0x91adc1);
+  const viewerPosition = new THREE.Vector3();
+  const lightPosition = new THREE.Vector3();
   let accumulator = 0;
+  let lastShadowBucket = -1;
+
+  function updateInteriorLights(night) {
+    const interiorFactor = 0.12 + night * 0.88;
+    const shouldIlluminate = night > INTERIOR_LIGHT_NIGHT_THRESHOLD;
+    const activeLights = new Set();
+
+    if (shouldIlluminate && indoorLights.length) {
+      if (camera) {
+        camera.getWorldPosition(viewerPosition);
+      } else {
+        viewerPosition.set(0, 1.6, 0);
+      }
+
+      const nearest = indoorLights
+        .map((light) => {
+          light.getWorldPosition(lightPosition);
+          return { light, distanceSq: lightPosition.distanceToSquared(viewerPosition) };
+        })
+        .sort((a, b) => a.distanceSq - b.distanceSq)
+        .slice(0, MAX_ACTIVE_INTERIOR_LIGHTS);
+
+      for (const entry of nearest) activeLights.add(entry.light);
+    }
+
+    for (const light of indoorLights) {
+      const visible = activeLights.has(light);
+      if (light.visible !== visible) light.visible = visible;
+      light.intensity = light.userData.dayNightBaseIntensity * interiorFactor;
+    }
+  }
 
   function apply(force = false) {
     const state = gameState.read();
@@ -61,6 +98,7 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
       Math.sin(orbit) * 22
     );
     lights.sun.intensity = 2.65 * daylight;
+    lights.sun.visible = daylight > 0.01;
     lights.sun.color.copy(whiteSun).lerp(warmSun, sunriseSunset * 0.72);
 
     lights.hemisphere.intensity = 0.16 + daylight * 1.39;
@@ -80,13 +118,15 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
     }
 
     renderer.toneMappingExposure = 0.7 + daylight * 0.38;
+    updateInteriorLights(night);
 
-    const interiorFactor = 0.12 + night * 0.88;
-    for (const light of indoorLights) {
-      light.intensity = light.userData.dayNightBaseIntensity * interiorFactor;
+    // The shadow map is frozen for Quest performance. Refresh occasionally as the
+    // sun moves, plus whenever callers explicitly force an update after loading.
+    const shadowBucket = Math.floor(minute / SHADOW_REFRESH_MINUTES);
+    if (force || shadowBucket !== lastShadowBucket) {
+      lastShadowBucket = shadowBucket;
+      renderer.shadowMap.needsUpdate = true;
     }
-
-    if (force) renderer.shadowMap.needsUpdate = true;
   }
 
   function update(dt) {
