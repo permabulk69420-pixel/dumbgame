@@ -87,6 +87,7 @@ const placement = createPlacementSystem({
 });
 
 const intensityManagedLights = new Set();
+const shadowOptimisedRoots = new WeakSet();
 
 function registerIntensityManagedLights(root) {
   root?.traverse?.((object) => {
@@ -104,9 +105,11 @@ function updateIntensityManagedLights() {
 }
 
 function disableDynamicShadowCasting(root) {
-  root?.traverse?.((object) => {
+  if (!root || shadowOptimisedRoots.has(root)) return;
+  root.traverse?.((object) => {
     if (object.isMesh) object.castShadow = false;
   });
+  shadowOptimisedRoots.add(root);
 }
 
 let hands = {
@@ -164,6 +167,7 @@ loadApartmentEntryDoor({
   statusElement: status
 }).then((value) => {
   entryDoor = value;
+  disableDynamicShadowCasting(value.root);
   world.refreshShadows?.();
 }).catch((error) => {
   console.error('Apartment entry door failed to load', error);
@@ -212,6 +216,7 @@ loadDecorAssets({
   gameState
 }).then((value) => {
   decor = value;
+  disableDynamicShadowCasting(world.scene.getObjectByName('ComputerDesk'));
   world.refreshShadows?.();
 }).catch(console.error);
 
@@ -357,6 +362,9 @@ world.renderer.setAnimationLoop((time) => {
 
   placement.update(dt);
   hands.update(dt);
+  for (const handState of hands.states || []) {
+    disableDynamicShadowCasting(handState.handRoot);
+  }
   decor.update(dt);
   pistol.update(dt);
   torch.update(dt);
