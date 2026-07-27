@@ -208,15 +208,15 @@ const handsReady = createVRHands({
   return null;
 });
 
-loadDecorAssets({
+handsReady.then((handsSystem) => loadDecorAssets({
   scene: world.scene,
   placement,
-  grips: world.grips,
+  grips: handsSystem?.objectGrips || world.grips,
   controllerModes,
   floorY: house.floorY,
   statusElement: status,
   gameState
-}).then((value) => {
+})).then((value) => {
   decor = value;
   disableDynamicShadowCasting(world.scene.getObjectByName('ComputerDesk'));
   disableDynamicShadowCasting(value.bedside?.root);
