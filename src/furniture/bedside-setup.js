@@ -72,7 +72,16 @@ function createClockDisplay(timeDisplay) {
     context.shadowColor = '#ff2a12';
     context.shadowBlur = 22;
     context.fillStyle = '#ff3018';
+
+    // The GLB display surface reverses the horizontally arranged readout after
+    // its required 180-degree correction. Mirror the completed canvas text once
+    // so the hour/minute sides and every digit face the player correctly.
+    context.save();
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
     context.fillText(text, canvas.width * 0.5, canvas.height * 0.54);
+    context.restore();
+
     texture.needsUpdate = true;
   }
 
