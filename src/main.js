@@ -4,11 +4,11 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=3';
 import { createVRHands } from './hands.js?v=8';
-import { loadDecorAssets } from './assets.js?v=5';
+import { loadDecorAssets } from './assets.js?v=6';
 import { loadPistol } from './weapons/pistol.js?v=4';
 import { loadTorch } from './tools/torch.js?v=4';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
-import { GAME_TIME, INTERACTION } from './config.js?v=6';
+import { GAME_TIME, INTERACTION } from './config.js?v=7';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -117,7 +117,7 @@ let hands = {
   setVisible() { return false; },
   isVisible() { return false; }
 };
-let decor = { update() {}, bed: null };
+let decor = { update() {}, bed: null, bedside: null, bat: null };
 let pistol = { update() {} };
 let torch = { update() {} };
 
@@ -211,12 +211,16 @@ const handsReady = createVRHands({
 loadDecorAssets({
   scene: world.scene,
   placement,
+  grips: world.grips,
+  controllerModes,
   floorY: house.floorY,
   statusElement: status,
   gameState
 }).then((value) => {
   decor = value;
   disableDynamicShadowCasting(world.scene.getObjectByName('ComputerDesk'));
+  disableDynamicShadowCasting(value.bedside?.root);
+  disableDynamicShadowCasting(value.bat?.root);
   world.refreshShadows?.();
 }).catch(console.error);
 
@@ -332,6 +336,8 @@ window.game = {
   recalibrateHeight: locomotion.requestHeightCalibration,
   getTargetEyeHeight: locomotion.getTargetEyeHeight,
   getBedroomBed: () => decor.bed || null,
+  getBedsideSetup: () => decor.bedside || null,
+  getBedroomBat: () => decor.bat || null,
   previewWakeSequence: wakeAuthoring.preview,
   publishWakeSetup: wakeAuthoring.publish,
   readWakeSetup: readPublishedWakeSetup,
