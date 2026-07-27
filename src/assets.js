@@ -1,4 +1,4 @@
-import { ASSETS } from './config.js?v=6';
+import { ASSETS } from './config.js?v=7';
 import { loadGLB, prepareModel } from './asset-loader.js?v=2';
 import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
