@@ -2,8 +2,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { HOUSE } from './config.js?v=10';
 
 const FLOOR_TEXTURE_SIZE = 1024;
-const FLOOR_TILE_METRES = 8;
-const FLOOR_PLANK_ROWS = 48;
+const FALLBACK_FLOOR_TILE_METRES = 8;
+const GENERATED_FLOOR_TILE_METRES = 2.6;
+const GENERATED_FLOOR_URL = './assets/textures/floor/oak_floor_basecolor.png?v=1';
 
 function seededRandom(seed) {
   let value = seed >>> 0;
@@ -66,29 +67,7 @@ function colourString(rgb, adjustment = 0) {
   return `rgb(${values[0]},${values[1]},${values[2]})`;
 }
 
-function drawPlankGrain(ctx, rng, x, y, width, height, dark = true) {
-  const lineCount = Math.max(5, Math.round(width / 34));
-  ctx.lineWidth = 0.65;
-
-  for (let line = 0; line < lineCount; line++) {
-    const centreY = y + 4 + rng() * Math.max(2, height - 8);
-    const alpha = 0.035 + rng() * 0.075;
-    ctx.strokeStyle = dark
-      ? `rgba(55,35,22,${alpha})`
-      : `rgba(245,225,188,${alpha * 0.58})`;
-    ctx.beginPath();
-    ctx.moveTo(x, centreY);
-    const segments = Math.max(3, Math.round(width / 80));
-    for (let segment = 1; segment <= segments; segment++) {
-      const px = x + width * (segment / segments);
-      const py = centreY + (rng() - 0.5) * Math.min(4.5, height * 0.16);
-      ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-  }
-}
-
-function woodFloorTextures() {
+function fallbackOakTextures() {
   const size = FLOOR_TEXTURE_SIZE;
   const colourCanvas = makeCanvas(size, size);
   const bumpCanvas = makeCanvas(size, size);
@@ -97,15 +76,9 @@ function woodFloorTextures() {
   const bumpCtx = bumpCanvas.getContext('2d');
   const roughnessCtx = roughnessCanvas.getContext('2d');
   const rng = seededRandom(0x0a4c2026);
-
-  // Dark seam values show through the tiny gaps between each board.
-  colourCtx.fillStyle = '#49392d';
-  colourCtx.fillRect(0, 0, size, size);
-  bumpCtx.fillStyle = 'rgb(58,58,58)';
-  bumpCtx.fillRect(0, 0, size, size);
-  roughnessCtx.fillStyle = 'rgb(239,239,239)';
-  roughnessCtx.fillRect(0, 0, size, size);
-
+  const rows = 48;
+  const rowHeight = size / rows;
+  const seam = 1.35;
   const palette = [
     [151, 126, 94],
     [142, 116, 86],
@@ -114,10 +87,15 @@ function woodFloorTextures() {
     [156, 129, 96],
     [146, 121, 91]
   ];
-  const rowHeight = size / FLOOR_PLANK_ROWS;
-  const seam = 1.35;
 
-  for (let row = 0; row < FLOOR_PLANK_ROWS; row++) {
+  colourCtx.fillStyle = '#49392d';
+  colourCtx.fillRect(0, 0, size, size);
+  bumpCtx.fillStyle = 'rgb(58,58,58)';
+  bumpCtx.fillRect(0, 0, size, size);
+  roughnessCtx.fillStyle = 'rgb(239,239,239)';
+  roughnessCtx.fillRect(0, 0, size, size);
+
+  for (let row = 0; row < rows; row++) {
     const rowTop = row * rowHeight;
     let x = 0;
 
@@ -133,111 +111,158 @@ function woodFloorTextures() {
       const ph = Math.max(1, rowHeight - seam * 2);
       const base = palette[Math.floor(rng() * palette.length)];
       const tint = (rng() - 0.5) * 14;
-      const edgeTint = tint + (rng() - 0.5) * 7;
-      const centreTint = tint + 4 + rng() * 5;
-
-      const plankGradient = colourCtx.createLinearGradient(px, py, px, py + ph);
-      plankGradient.addColorStop(0, colourString(base, edgeTint - 3));
-      plankGradient.addColorStop(0.22, colourString(base, centreTint));
-      plankGradient.addColorStop(0.78, colourString(base, tint + 2));
-      plankGradient.addColorStop(1, colourString(base, edgeTint - 5));
-      colourCtx.fillStyle = plankGradient;
+      const gradient = colourCtx.createLinearGradient(px, py, px, py + ph);
+      gradient.addColorStop(0, colourString(base, tint - 5));
+      gradient.addColorStop(0.25, colourString(base, tint + 7));
+      gradient.addColorStop(0.78, colourString(base, tint + 1));
+      gradient.addColorStop(1, colourString(base, tint - 6));
+      colourCtx.fillStyle = gradient;
       colourCtx.fillRect(px, py, pw, ph);
 
       const bumpValue = Math.round(126 + (rng() - 0.5) * 9);
       bumpCtx.fillStyle = `rgb(${bumpValue},${bumpValue},${bumpValue})`;
       bumpCtx.fillRect(px, py, pw, ph);
 
-      const roughnessValue = Math.round(197 + rng() * 24);
-      roughnessCtx.fillStyle = `rgb(${roughnessValue},${roughnessValue},${roughnessValue})`;
+      const roughValue = Math.round(198 + rng() * 23);
+      roughnessCtx.fillStyle = `rgb(${roughValue},${roughValue},${roughValue})`;
       roughnessCtx.fillRect(px, py, pw, ph);
 
-      drawPlankGrain(colourCtx, rng, px, py, pw, ph, true);
-      drawPlankGrain(colourCtx, rng, px, py, pw, ph, false);
-
-      const grainCount = Math.max(5, Math.round(pw / 42));
+      const grainCount = Math.max(5, Math.round(pw / 36));
       for (let grain = 0; grain < grainCount; grain++) {
         const gy = py + 3 + rng() * Math.max(2, ph - 6);
         const gx = px + rng() * pw;
-        const length = 18 + rng() * Math.min(85, pw * 0.32);
-        const bumpShade = Math.round(119 + rng() * 15);
-        bumpCtx.strokeStyle = `rgba(${bumpShade},${bumpShade},${bumpShade},0.52)`;
+        const length = 20 + rng() * Math.min(95, pw * 0.38);
+        const wave = (rng() - 0.5) * 2.5;
+
+        colourCtx.strokeStyle = `rgba(55,35,22,${0.035 + rng() * 0.075})`;
+        colourCtx.lineWidth = 0.7;
+        colourCtx.beginPath();
+        colourCtx.moveTo(gx, gy);
+        colourCtx.bezierCurveTo(gx + length * 0.35, gy + wave, gx + length * 0.72, gy - wave,
+          Math.min(px + pw, gx + length), gy + wave * 0.35);
+        colourCtx.stroke();
+
+        bumpCtx.strokeStyle = `rgba(112,112,112,${0.28 + rng() * 0.28})`;
         bumpCtx.lineWidth = 0.75;
         bumpCtx.beginPath();
         bumpCtx.moveTo(gx, gy);
-        bumpCtx.bezierCurveTo(
-          gx + length * 0.28,
-          gy + (rng() - 0.5) * 2.4,
-          gx + length * 0.7,
-          gy + (rng() - 0.5) * 2.4,
-          Math.min(px + pw, gx + length),
-          gy + (rng() - 0.5) * 1.5
-        );
+        bumpCtx.lineTo(Math.min(px + pw, gx + length), gy + wave * 0.3);
         bumpCtx.stroke();
-
-        const roughShade = Math.round(182 + rng() * 45);
-        roughnessCtx.strokeStyle = `rgba(${roughShade},${roughShade},${roughShade},0.34)`;
-        roughnessCtx.lineWidth = 1;
-        roughnessCtx.beginPath();
-        roughnessCtx.moveTo(gx, gy);
-        roughnessCtx.lineTo(Math.min(px + pw, gx + length), gy + (rng() - 0.5) * 1.8);
-        roughnessCtx.stroke();
-      }
-
-      // Sparse, restrained knots: enough to stop repetition looking synthetic without
-      // turning the apartment into a rustic log cabin.
-      if (pw > 145 && rng() < 0.16) {
-        const knotX = px + pw * (0.2 + rng() * 0.6);
-        const knotY = py + ph * (0.3 + rng() * 0.4);
-        const radiusX = 3.5 + rng() * 5.5;
-        const radiusY = 1.7 + rng() * 2.8;
-
-        colourCtx.save();
-        colourCtx.translate(knotX, knotY);
-        colourCtx.scale(1, radiusY / radiusX);
-        const knotGradient = colourCtx.createRadialGradient(0, 0, 0.5, 0, 0, radiusX);
-        knotGradient.addColorStop(0, 'rgba(58,38,25,0.62)');
-        knotGradient.addColorStop(0.5, 'rgba(84,53,31,0.38)');
-        knotGradient.addColorStop(1, 'rgba(91,59,38,0)');
-        colourCtx.fillStyle = knotGradient;
-        colourCtx.beginPath();
-        colourCtx.arc(0, 0, radiusX, 0, Math.PI * 2);
-        colourCtx.fill();
-        colourCtx.restore();
-
-        bumpCtx.fillStyle = 'rgba(88,88,88,0.52)';
-        bumpCtx.beginPath();
-        bumpCtx.ellipse(knotX, knotY, radiusX, radiusY, 0, 0, Math.PI * 2);
-        bumpCtx.fill();
-
-        roughnessCtx.fillStyle = 'rgba(235,235,235,0.42)';
-        roughnessCtx.beginPath();
-        roughnessCtx.ellipse(knotX, knotY, radiusX * 1.35, radiusY * 1.35, 0, 0, Math.PI * 2);
-        roughnessCtx.fill();
       }
 
       x += plankLength;
     }
   }
 
-  // Fine pores and wear break up broad colour fields when viewed closely in VR.
-  for (let speck = 0; speck < 10500; speck++) {
-    const x = Math.floor(rng() * size);
-    const y = Math.floor(rng() * size);
-    const alpha = 0.012 + rng() * 0.026;
-    colourCtx.fillStyle = rng() > 0.54
-      ? `rgba(255,239,207,${alpha})`
-      : `rgba(54,37,25,${alpha})`;
-    colourCtx.fillRect(x, y, 1 + (rng() > 0.94 ? 1 : 0), 1);
-  }
-
-  const repeatX = HOUSE.width / FLOOR_TILE_METRES;
-  const repeatY = HOUSE.depth / FLOOR_TILE_METRES;
+  const repeatX = HOUSE.width / FALLBACK_FLOOR_TILE_METRES;
+  const repeatY = HOUSE.depth / FALLBACK_FLOOR_TILE_METRES;
   return {
     colour: textureFromCanvas(colourCanvas, { repeatX, repeatY, anisotropy: 8 }),
     bump: textureFromCanvas(bumpCanvas, { repeatX, repeatY, colour: false, anisotropy: 8 }),
     roughness: textureFromCanvas(roughnessCanvas, { repeatX, repeatY, colour: false, anisotropy: 8 })
   };
+}
+
+function floorRepeats() {
+  return {
+    x: HOUSE.width / GENERATED_FLOOR_TILE_METRES,
+    y: HOUSE.depth / GENERATED_FLOOR_TILE_METRES
+  };
+}
+
+function configureFloorTexture(texture, colour = true) {
+  const repeat = floorRepeats();
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat.x, repeat.y);
+  texture.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  texture.anisotropy = 8;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function deriveFloorMaps(image) {
+  const sourceWidth = image.naturalWidth || image.width || FLOOR_TEXTURE_SIZE;
+  const sourceHeight = image.naturalHeight || image.height || FLOOR_TEXTURE_SIZE;
+  const size = Math.max(256, Math.min(FLOOR_TEXTURE_SIZE, sourceWidth, sourceHeight));
+  const sourceCanvas = makeCanvas(size, size);
+  const blurCanvas = makeCanvas(size, size);
+  const bumpCanvas = makeCanvas(size, size);
+  const roughnessCanvas = makeCanvas(size, size);
+  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const blurCtx = blurCanvas.getContext('2d', { willReadFrequently: true });
+  const bumpCtx = bumpCanvas.getContext('2d');
+  const roughnessCtx = roughnessCanvas.getContext('2d');
+
+  sourceCtx.drawImage(image, 0, 0, size, size);
+  blurCtx.filter = 'blur(4px)';
+  blurCtx.drawImage(sourceCanvas, 0, 0);
+  blurCtx.filter = 'none';
+
+  const source = sourceCtx.getImageData(0, 0, size, size);
+  const blurred = blurCtx.getImageData(0, 0, size, size);
+  const bump = bumpCtx.createImageData(size, size);
+  const roughness = roughnessCtx.createImageData(size, size);
+
+  for (let index = 0; index < source.data.length; index += 4) {
+    const luminance = source.data[index] * 0.2126 + source.data[index + 1] * 0.7152 + source.data[index + 2] * 0.0722;
+    const blurredLuminance = blurred.data[index] * 0.2126 + blurred.data[index + 1] * 0.7152 + blurred.data[index + 2] * 0.0722;
+    const detail = luminance - blurredLuminance;
+    const bumpValue = THREE.MathUtils.clamp(Math.round(128 + detail * 1.18 + (luminance - 128) * 0.07), 20, 236);
+    const roughValue = THREE.MathUtils.clamp(Math.round(225 + Math.abs(detail) * 0.34 + (128 - luminance) * 0.055), 198, 246);
+
+    bump.data[index] = bumpValue;
+    bump.data[index + 1] = bumpValue;
+    bump.data[index + 2] = bumpValue;
+    bump.data[index + 3] = 255;
+
+    roughness.data[index] = roughValue;
+    roughness.data[index + 1] = roughValue;
+    roughness.data[index + 2] = roughValue;
+    roughness.data[index + 3] = 255;
+  }
+
+  bumpCtx.putImageData(bump, 0, 0);
+  roughnessCtx.putImageData(roughness, 0, 0);
+  return {
+    bump: configureFloorTexture(new THREE.CanvasTexture(bumpCanvas), false),
+    roughness: configureFloorTexture(new THREE.CanvasTexture(roughnessCanvas), false)
+  };
+}
+
+function loadGeneratedFloorTexture(floor, fallback) {
+  const loader = new THREE.TextureLoader();
+  loader.load(
+    GENERATED_FLOOR_URL,
+    (colourTexture) => {
+      try {
+        configureFloorTexture(colourTexture, true);
+        const derived = deriveFloorMaps(colourTexture.image);
+        floor.map = colourTexture;
+        floor.bumpMap = derived.bump;
+        floor.roughnessMap = derived.roughness;
+        floor.bumpScale = 0.018;
+        floor.roughness = 1;
+        floor.name = 'Generated_Matte_Oak_Floor';
+        floor.userData.floorStyle = 'generated-oak-image-v1';
+        floor.userData.textureUrl = GENERATED_FLOOR_URL;
+        floor.needsUpdate = true;
+
+        fallback.colour.dispose();
+        fallback.bump.dispose();
+        fallback.roughness.dispose();
+      } catch (error) {
+        colourTexture.dispose();
+        console.warn('Generated floor texture loaded but its material maps could not be derived.', error);
+      }
+    },
+    undefined,
+    (error) => {
+      console.warn('Generated floor texture could not load; keeping the procedural oak fallback.', error);
+    }
+  );
 }
 
 function roofTexture() {
@@ -267,11 +292,11 @@ function roofTexture() {
 export function createMaterials() {
   const plaster = plasterTexture([218, 213, 204]);
   const innerPlaster = plasterTexture([203, 197, 187]);
-  const timberFloor = woodFloorTextures();
+  const timberFloor = fallbackOakTextures();
   const roof = roofTexture();
 
   const floor = new THREE.MeshStandardMaterial({
-    name: 'Procedural_Matte_Oak_Floor',
+    name: 'Procedural_Matte_Oak_Floor_Fallback',
     map: timberFloor.colour,
     bumpMap: timberFloor.bump,
     bumpScale: 0.021,
@@ -279,7 +304,8 @@ export function createMaterials() {
     roughness: 0.98,
     metalness: 0
   });
-  floor.userData.floorStyle = 'procedural-matte-oak-v2';
+  floor.userData.floorStyle = 'procedural-matte-oak-fallback';
+  loadGeneratedFloorTexture(floor, timberFloor);
 
   return {
     outer: new THREE.MeshStandardMaterial({ map: plaster, color: 0xffffff, roughness: 0.94 }),
