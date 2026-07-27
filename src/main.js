@@ -9,7 +9,7 @@ import { loadPistol } from './weapons/pistol.js?v=3';
 import { loadTorch } from './tools/torch.js?v=3';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=2';
 import { GAME_TIME, INTERACTION } from './config.js?v=4';
-import { createControllerModes } from './input/controller-modes.js';
+import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js';
@@ -24,11 +24,12 @@ const status = document.getElementById('status');
 
 const startSelection = await selectStartMode({ loadingElement: loading });
 const gameMode = startSelection.mode;
-const gameModeLabel = gameMode === 'creative' ? 'Creative Build' : 'Story Mode';
-const stateStorageKey = gameMode === 'creative'
+const isCreativeMode = gameMode === 'creative';
+const gameModeLabel = isCreativeMode ? 'Creative Build' : 'Story Mode';
+const stateStorageKey = isCreativeMode
   ? MODE_STORAGE_KEYS.creativeState
   : MODE_STORAGE_KEYS.storyState;
-const placementStorageKey = gameMode === 'creative'
+const placementStorageKey = isCreativeMode
   ? MODE_STORAGE_KEYS.creativePlacements
   : MODE_STORAGE_KEYS.storyPlacements;
 
@@ -53,11 +54,8 @@ const events = createEventScheduler({ gameState });
 const controllerModes = createControllerModes({
   controllers: world.controllers,
   statusElement: status,
-  // Both modes deliberately retain the current prototype behaviour for now.
-  // Creative mode is forced on so future story defaults can become stricter independently.
-  decorationEnabledByDefault: gameMode === 'creative'
-    ? true
-    : INTERACTION.decorationEnabledByDefault,
+  allowDecoration: isCreativeMode,
+  decorationEnabledByDefault: isCreativeMode,
   decorationToggleHoldSeconds: INTERACTION.decorationToggleHoldSeconds
 });
 
@@ -183,9 +181,9 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.rotation.set(0, 0, 0);
   world.camera.position.set(0, 0, 0);
   performanceHud.reset();
-  status.textContent = gameMode === 'creative'
-    ? 'Creative Build · furniture uses its own sandbox save · B/Y moves props · A/X points'
-    : 'Story Mode · FPS panel follows left controller · grip handles or held items · A/X points';
+  status.textContent = isCreativeMode
+    ? 'Creative Build · B/Y moves props · both stick-clicks toggle decorating · A/X points'
+    : 'Story Mode · build controls locked · grip handles or held items · A/X points';
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
@@ -212,6 +210,7 @@ window.game = {
   setTimeScale: clock.setTimeScale,
   pauseTime: clock.setPaused,
   setDecorationMode: controllerModes.setDecorationMode,
+  isDecorationAllowed: controllerModes.isDecorationAllowed,
   isDecorationMode: controllerModes.isDecorationMode,
   setPointing: controllerModes.setPointing,
   setPerformanceHudVisible: performanceHud.setVisible,
@@ -237,7 +236,7 @@ world.renderer.setAnimationLoop((time) => {
   const advanceClock = GAME_TIME.advanceOnlyInXR ? world.renderer.xr.isPresenting : true;
   clock.update(dt, advanceClock);
   dayNight.update(dt);
-  if (gameMode === 'story') events.update({ world, house, placement, clock });
+  if (!isCreativeMode) events.update({ world, house, placement, clock });
 
   placement.update(dt);
   hands.update(dt);
