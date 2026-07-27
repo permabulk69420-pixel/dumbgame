@@ -1,8 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=2';
-import { loadGLB, prepareModel } from '../asset-loader.js';
+import { ASSETS } from '../config.js?v=8';
+import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 
-const GRAVITY = 7.5;
 const LIGHT_DISTANCE = 15;
 const LIGHT_INTENSITY = 95;
 const LIGHT_ANGLE = THREE.MathUtils.degToRad(22);
@@ -37,21 +36,6 @@ function requireNode(root, name) {
   const node = root.getObjectByName(name);
   if (!node) throw new Error(`Torch GLB is missing required node: ${name}`);
   return node;
-}
-
-function settleOnFloor(root, floorY, velocity, dt, bounds) {
-  velocity.y -= GRAVITY * dt;
-  root.position.addScaledVector(velocity, dt);
-  root.updateWorldMatrix(true, true);
-  bounds.setFromObject(root);
-
-  if (bounds.min.y <= floorY) {
-    root.position.y += floorY - bounds.min.y;
-    velocity.set(0, 0, 0);
-    root.updateMatrixWorld(true);
-    return true;
-  }
-  return false;
 }
 
 function prepareEmissiveNode(node) {
@@ -103,6 +87,7 @@ export async function loadTorch({
   placement,
   grips,
   hands = null,
+  physics = null,
   controllerModes = null,
   floorY = 0,
   statusElement = null
@@ -145,10 +130,22 @@ export async function loadTorch({
   root.rotation.set(0, Math.PI * 0.5, Math.PI * 0.5);
   scene.add(root);
 
-  const velocity = new THREE.Vector3();
-  const bounds = new THREE.Box3();
+  const physicsBody = physics?.registerDynamicObject?.({
+    root,
+    collider: {
+      shape: 'box',
+      halfExtents: [0.024, 0.024, 0.079],
+      translation: [0, 0.0225, -0.003]
+    },
+    mass: 0.34,
+    friction: 0.74,
+    restitution: 0.05,
+    linearDamping: 0.22,
+    angularDamping: 0.42,
+    ccd: true
+  }) || null;
+
   let holder = null;
-  let falling = false;
   let lightOn = false;
   let pokeLatched = false;
   let buttonPressAmount = 0;
@@ -161,6 +158,10 @@ export async function loadTorch({
   const setStatus = (text) => {
     if (statusElement) statusElement.textContent = text;
   };
+
+  function setPhysicsHeld(value) {
+    root.userData.physicsHeld = Boolean(value);
+  }
 
   function applyLightState() {
     spot.intensity = lightOn ? LIGHT_INTENSITY : 0;
@@ -226,6 +227,7 @@ export async function loadTorch({
   }
 
   applyLightState();
+  setPhysicsHeld(false);
 
   const unregisterGrab = placement.registerGrabInteraction(root, {
     id: 'handheld-torch',
@@ -236,10 +238,9 @@ export async function loadTorch({
       if (!grip) return false;
 
       holder = { handedness, grip };
-      falling = false;
+      setPhysicsHeld(true);
       pokeLatched = false;
       buttonPressAmount = 0;
-      velocity.set(0, 0, 0);
       controllerModes?.setPointing?.(handedness, false);
       attachLocatorToGrip(root, gripMatrix, grip);
       setStatus(pokeInstructions());
@@ -249,11 +250,10 @@ export async function loadTorch({
       if (holder?.handedness !== handedness) return;
       scene.attach(root);
       holder = null;
+      setPhysicsHeld(false);
       pokeLatched = false;
       buttonPressAmount = 0;
       powerButton.position.y = buttonRestY;
-      falling = true;
-      velocity.set(0, -0.1, 0);
       setStatus('Torch dropped · point at it and hold grip to pick it up');
     }
   });
@@ -265,16 +265,12 @@ export async function loadTorch({
         controllerModes.setPointing(holder.handedness, false);
       }
     }
-
     updatePoke(dt);
-
-    if (falling) {
-      falling = !settleOnFloor(root, floorY, velocity, dt, bounds);
-    }
   }
 
   return {
     root,
+    physicsBody,
     update,
     isHeld: () => Boolean(holder),
     isOn: () => lightOn,
@@ -283,6 +279,8 @@ export async function loadTorch({
       applyLightState();
     },
     dispose() {
+      setPhysicsHeld(false);
+      physicsBody?.dispose?.();
       unregisterGrab();
       root.removeFromParent();
     }
