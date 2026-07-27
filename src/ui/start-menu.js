@@ -2,7 +2,8 @@ export const MODE_STORAGE_KEYS = Object.freeze({
   storyState: 'dumbgame-game-state-story-v1',
   storyPlacements: 'dumbgame-object-placements-story-v1',
   creativeState: 'dumbgame-game-state-creative-v1',
-  creativePlacements: 'dumbgame-object-placements-creative-v1'
+  creativePlacements: 'dumbgame-object-placements-creative-v1',
+  publishedPlacements: 'dumbgame-object-placements-published-v1'
 });
 
 const LEGACY_KEYS = Object.freeze({
@@ -21,8 +22,9 @@ function safeGet(key) {
 function safeSet(key, value) {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
-    // The game still starts when storage is unavailable.
+    return false;
   }
 }
 
@@ -31,6 +33,25 @@ function safeRemove(key) {
     localStorage.removeItem(key);
   } catch {
     // A fresh in-memory session is still usable.
+  }
+}
+
+export function publishCreativeLayout(placements = {}) {
+  const clean = placements && typeof placements === 'object' ? placements : {};
+  const serialised = JSON.stringify(clean);
+  safeSet(MODE_STORAGE_KEYS.publishedPlacements, serialised);
+  // Update the current Story layout immediately as well as the New Story template.
+  safeSet(MODE_STORAGE_KEYS.storyPlacements, serialised);
+  return JSON.parse(serialised);
+}
+
+export function readPublishedLayout() {
+  const value = safeGet(MODE_STORAGE_KEYS.publishedPlacements);
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
 }
 
@@ -87,7 +108,12 @@ export async function selectStartMode({ loadingElement = null } = {}) {
 
   if (selection === 'new-story') {
     safeRemove(MODE_STORAGE_KEYS.storyState);
-    safeRemove(MODE_STORAGE_KEYS.storyPlacements);
+    const publishedLayout = safeGet(MODE_STORAGE_KEYS.publishedPlacements);
+    if (publishedLayout) {
+      safeSet(MODE_STORAGE_KEYS.storyPlacements, publishedLayout);
+    } else {
+      safeRemove(MODE_STORAGE_KEYS.storyPlacements);
+    }
   }
 
   document.body.dataset.gameMode = mode;
