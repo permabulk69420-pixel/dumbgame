@@ -6,6 +6,10 @@ export const WAKE_SEQUENCE_EVENT_ID = 'opening-wake-sequence';
 const POSE_NAMES = Object.freeze(['lying', 'sitting', 'standing']);
 const ONE = new THREE.Vector3(1, 1, 1);
 const UP = new THREE.Vector3(0, 1, 0);
+const TRACKING_SETTLE_FRAMES = 8;
+const MAX_TRACKING_WAIT_SECONDS = 2.5;
+const MIN_TRACKED_HEAD_HEIGHT = 0.08;
+const MAX_TRACKED_HEAD_HEIGHT = 4.0;
 
 function smooth01(value) {
   const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -124,6 +128,7 @@ export function createWakeSequence({
 }) {
   const eyelids = createEyelidOverlay(camera);
   const desiredHeadMatrix = new THREE.Matrix4();
+  const trackedHeadWorldMatrix = new THREE.Matrix4();
   const localHeadMatrix = new THREE.Matrix4();
   const inverseLocalHeadMatrix = new THREE.Matrix4();
   const rigWorldMatrix = new THREE.Matrix4();
@@ -137,6 +142,12 @@ export function createWakeSequence({
   const uprightRigPosition = new THREE.Vector3();
   const uprightRigQuaternion = new THREE.Quaternion();
   const rotatedHeadOffset = new THREE.Vector3();
+  const eyePositionA = new THREE.Vector3();
+  const eyePositionB = new THREE.Vector3();
+  const eyeQuaternionA = new THREE.Quaternion();
+  const eyeQuaternionB = new THREE.Quaternion();
+  const trackedHeadPosition = new THREE.Vector3();
+  const trackedHeadQuaternion = new THREE.Quaternion();
   const desiredEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   const localEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
@@ -155,16 +166,66 @@ export function createWakeSequence({
     if (statusElement) statusElement.textContent = text;
   };
 
-  function alignRigToPose(poseName) {
+  function readTrackedHeadWorldMatrix() {
+    const xrCamera = renderer.xr.getCamera(camera);
+    const views = xrCamera?.cameras || [];
+
+    if (views.length) {
+      const firstEye = views[0];
+      const lastEye = views[views.length - 1];
+      firstEye.updateWorldMatrix(true, false);
+      lastEye.updateWorldMatrix(true, false);
+      firstEye.getWorldPosition(eyePositionA);
+      lastEye.getWorldPosition(eyePositionB);
+      firstEye.getWorldQuaternion(eyeQuaternionA);
+      lastEye.getWorldQuaternion(eyeQuaternionB);
+
+      trackedHeadPosition.copy(eyePositionA).add(eyePositionB).multiplyScalar(0.5);
+      trackedHeadQuaternion.copy(eyeQuaternionA).slerp(eyeQuaternionB, 0.5).normalize();
+      trackedHeadWorldMatrix.compose(trackedHeadPosition, trackedHeadQuaternion, ONE);
+    } else if (xrCamera) {
+      xrCamera.updateWorldMatrix(true, false);
+      trackedHeadWorldMatrix.copy(xrCamera.matrixWorld);
+    } else {
+      return false;
+    }
+
+    return trackedHeadWorldMatrix.elements.every(Number.isFinite);
+  }
+
+  function readLocalTrackedHead() {
+    rig.updateWorldMatrix(true, false);
+    if (!readTrackedHeadWorldMatrix()) return false;
+
+    localHeadMatrix.copy(rig.matrixWorld).invert().multiply(trackedHeadWorldMatrix);
+    localHeadMatrix.decompose(localHeadPosition, localHeadQuaternion, localHeadScale);
+
+    // At session entry the XR ArrayCamera can briefly retain the desktop orbit camera.
+    // Reject that stale 12-metre-high pose instead of launching the player outside.
+    return Number.isFinite(localHeadPosition.y) &&
+      localHeadPosition.y >= MIN_TRACKED_HEAD_HEIGHT &&
+      localHeadPosition.y <= MAX_TRACKED_HEAD_HEIGHT;
+  }
+
+  function useFallbackLocalHead() {
+    // Only reached when Quest tracking has not stabilised after several closed-eye frames.
+    // It keeps the authored camera inside the room rather than using stale desktop data.
+    localHeadPosition.set(0, 1.65, 0);
+    localHeadQuaternion.identity();
+    localHeadScale.copy(ONE);
+    localHeadMatrix.compose(localHeadPosition, localHeadQuaternion, localHeadScale);
+  }
+
+  function alignRigToPose(poseName, allowFallback = false) {
     const pose = setup?.poses?.[poseName];
     if (!pose || !renderer.xr.isPresenting) return false;
 
-    const xrCamera = renderer.xr.getCamera(camera);
-    rig.updateWorldMatrix(true, false);
-    xrCamera.updateWorldMatrix(true, false);
+    if (!readLocalTrackedHead()) {
+      if (!allowFallback) return false;
+      useFallbackLocalHead();
+      console.warn('Wake sequence used fallback head tracking for the first authored pose.');
+    }
 
-    localHeadMatrix.copy(rig.matrixWorld).invert().multiply(xrCamera.matrixWorld);
-    localHeadMatrix.decompose(localHeadPosition, localHeadQuaternion, localHeadScale);
     posePosition.fromArray(pose.position);
     poseQuaternion.fromArray(pose.quaternion).normalize();
 
@@ -205,10 +266,10 @@ export function createWakeSequence({
 
     if (phase === 'closedAtSitting') {
       eyelids.setOpenness(0);
-      alignRigToPose('sitting');
+      alignRigToPose('sitting', true);
     } else if (phase === 'closedAtStanding') {
       eyelids.setOpenness(0);
-      alignRigToPose('standing');
+      alignRigToPose('standing', true);
     } else if (phase === 'openStanding') {
       setHandsVisible(true);
     }
@@ -259,7 +320,7 @@ export function createWakeSequence({
     active = true;
     phase = 'waitingForPose';
     phaseTime = 0;
-    framesBeforeFirstPose = 2;
+    framesBeforeFirstPose = TRACKING_SETTLE_FRAMES;
     eyelids.setOpenness(0);
     eyelids.object.visible = true;
     setStatus(preview ? 'Previewing authored wake sequence…' : 'Opening sequence…');
@@ -290,10 +351,13 @@ export function createWakeSequence({
     phaseTime += Math.max(0, dt || 0);
 
     switch (phase) {
-      case 'waitingForPose':
+      case 'waitingForPose': {
         framesBeforeFirstPose -= 1;
-        if (framesBeforeFirstPose <= 0 && alignRigToPose('lying')) enterPhase('openLying');
+        if (framesBeforeFirstPose > 0) break;
+        const allowFallback = phaseTime >= MAX_TRACKING_WAIT_SECONDS;
+        if (alignRigToPose('lying', allowFallback)) enterPhase('openLying');
         break;
+      }
       case 'openLying':
         if (animateOpenness(0, 1, 2.6)) enterPhase('holdLying');
         break;
