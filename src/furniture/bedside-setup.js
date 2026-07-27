@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=6';
+import { ASSETS } from '../config.js?v=7';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 
 const DRAWER_CLOSED_Z = -0.040;
