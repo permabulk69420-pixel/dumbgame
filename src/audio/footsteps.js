@@ -16,25 +16,31 @@ function randomBetween(min, max) {
   return min + Math.random() * (max - min);
 }
 
+function currentSfxVolume() {
+  const volumes = globalThis.game?.getAudioVolumes?.();
+  const master = Number.isFinite(volumes?.master) ? volumes.master : 1;
+  const sfx = Number.isFinite(volumes?.sfx) ? volumes.sfx : 1;
+  return THREE.MathUtils.clamp(master * sfx, 0, 1);
+}
+
 export function createFootstepSystem({
   rig,
   renderer,
-  audio,
+  audio = null,
   isSuppressed = () => false,
   stepDistance = 0.68
 }) {
-  if (!rig || !renderer || !audio?.playSfx) {
-    throw new Error('createFootstepSystem requires rig, renderer and audio manager');
+  if (!rig || !renderer) {
+    throw new Error('createFootstepSystem requires rig and renderer');
   }
 
   const previousPosition = new THREE.Vector3();
+  const activeNativeVoices = new Set();
   let hasPreviousPosition = false;
   let travelled = stepDistance * 0.42;
   let lastSample = -1;
   let enabled = true;
 
-  // Ask the browser to fetch these tiny clips early. Playback still goes through the
-  // central audio manager so master/SFX volume controls continue to work.
   const preloaders = WOOD_STEPS.map((url) => {
     const element = new Audio(url);
     element.preload = 'auto';
@@ -46,18 +52,45 @@ export function createFootstepSystem({
   function chooseSample() {
     if (WOOD_STEPS.length < 2) return 0;
     let next = Math.floor(Math.random() * WOOD_STEPS.length);
-    if (next === lastSample) next = (next + 1 + Math.floor(Math.random() * (WOOD_STEPS.length - 1))) % WOOD_STEPS.length;
+    if (next === lastSample) {
+      next = (next + 1 + Math.floor(Math.random() * (WOOD_STEPS.length - 1))) % WOOD_STEPS.length;
+    }
     lastSample = next;
     return next;
   }
 
+  function playNative(sampleIndex, gain, playbackRate) {
+    const voice = preloaders[sampleIndex].cloneNode();
+    voice.volume = THREE.MathUtils.clamp(currentSfxVolume() * gain, 0, 1);
+    voice.playbackRate = playbackRate;
+    if ('preservesPitch' in voice) voice.preservesPitch = false;
+    if ('mozPreservesPitch' in voice) voice.mozPreservesPitch = false;
+    if ('webkitPreservesPitch' in voice) voice.webkitPreservesPitch = false;
+    activeNativeVoices.add(voice);
+    const cleanup = () => {
+      activeNativeVoices.delete(voice);
+      voice.removeAttribute('src');
+      voice.load();
+    };
+    voice.addEventListener('ended', cleanup, { once: true });
+    voice.addEventListener('error', cleanup, { once: true });
+    void voice.play().catch(() => cleanup());
+  }
+
   function playStep() {
     const sampleIndex = chooseSample();
-    audio.playSfx(WOOD_STEPS[sampleIndex], {
-      gain: randomBetween(0.76, 0.92),
-      playbackRate: randomBetween(0.94, 1.06),
-      preservePitch: false
-    });
+    const gain = randomBetween(0.76, 0.92);
+    const playbackRate = randomBetween(0.94, 1.06);
+
+    if (audio?.playSfx) {
+      audio.playSfx(WOOD_STEPS[sampleIndex], {
+        gain,
+        playbackRate,
+        preservePitch: false
+      });
+    } else {
+      playNative(sampleIndex, gain, playbackRate);
+    }
   }
 
   function reset() {
@@ -86,8 +119,7 @@ export function createFootstepSystem({
       return;
     }
 
-    // Ignore teleports, spawn placement and calibration corrections rather than firing
-    // several footsteps in one frame.
+    // Ignore spawn placement and reference-space corrections rather than firing a burst.
     if (distance < 0.002 || distance > 0.45) return;
 
     travelled += distance;
@@ -107,6 +139,12 @@ export function createFootstepSystem({
     },
     isEnabled: () => enabled,
     dispose() {
+      for (const voice of activeNativeVoices) {
+        voice.pause();
+        voice.removeAttribute('src');
+        voice.load();
+      }
+      activeNativeVoices.clear();
       for (const element of preloaders) {
         element.pause();
         element.removeAttribute('src');
