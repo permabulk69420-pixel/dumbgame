@@ -1,14 +1,18 @@
+const SHARED_PLACEMENT_KEY = 'dumbgame-object-placements-shared-v1';
+
 export const MODE_STORAGE_KEYS = Object.freeze({
   storyState: 'dumbgame-game-state-story-v1',
-  storyPlacements: 'dumbgame-object-placements-story-v1',
+  storyPlacements: SHARED_PLACEMENT_KEY,
   creativeState: 'dumbgame-game-state-creative-v1',
-  creativePlacements: 'dumbgame-object-placements-creative-v1',
+  creativePlacements: SHARED_PLACEMENT_KEY,
   publishedPlacements: 'dumbgame-object-placements-published-v1'
 });
 
 const LEGACY_KEYS = Object.freeze({
   state: 'dumbgame-game-state-v1',
-  placements: 'dumbgame-object-placements-v1'
+  placements: 'dumbgame-object-placements-v1',
+  storyPlacements: 'dumbgame-object-placements-story-v1',
+  creativePlacements: 'dumbgame-object-placements-creative-v1'
 });
 
 function safeGet(key) {
@@ -40,8 +44,7 @@ export function publishCreativeLayout(placements = {}) {
   const clean = placements && typeof placements === 'object' ? placements : {};
   const serialised = JSON.stringify(clean);
   safeSet(MODE_STORAGE_KEYS.publishedPlacements, serialised);
-  // Update the current Story layout immediately as well as the New Story template.
-  safeSet(MODE_STORAGE_KEYS.storyPlacements, serialised);
+  safeSet(SHARED_PLACEMENT_KEY, serialised);
   return JSON.parse(serialised);
 }
 
@@ -58,19 +61,17 @@ export function readPublishedLayout() {
 function migrateLegacySaves() {
   const oldState = safeGet(LEGACY_KEYS.state);
   const oldPlacements = safeGet(LEGACY_KEYS.placements);
+  const oldCreativePlacements = safeGet(LEGACY_KEYS.creativePlacements);
+  const oldStoryPlacements = safeGet(LEGACY_KEYS.storyPlacements);
 
   if (!safeGet(MODE_STORAGE_KEYS.storyState) && oldState) {
     safeSet(MODE_STORAGE_KEYS.storyState, oldState);
   }
 
-  if (!safeGet(MODE_STORAGE_KEYS.storyPlacements) && oldPlacements) {
-    safeSet(MODE_STORAGE_KEYS.storyPlacements, oldPlacements);
-  }
-
-  // Creative mode begins with the apartment layout the user was already testing,
-  // but receives its own independent placement save from this point onward.
-  if (!safeGet(MODE_STORAGE_KEYS.creativePlacements) && oldPlacements) {
-    safeSet(MODE_STORAGE_KEYS.creativePlacements, oldPlacements);
+  // Prefer the most recently used Creative layout, then Story, then the original legacy save.
+  if (!safeGet(SHARED_PLACEMENT_KEY)) {
+    const layout = oldCreativePlacements || oldStoryPlacements || oldPlacements;
+    if (layout) safeSet(SHARED_PLACEMENT_KEY, layout);
   }
 }
 
@@ -107,13 +108,8 @@ export async function selectStartMode({ loadingElement = null } = {}) {
   if (selection === 'creative-build') mode = 'creative';
 
   if (selection === 'new-story') {
+    // Reset narrative progress but preserve the apartment layout authored in Creative Build.
     safeRemove(MODE_STORAGE_KEYS.storyState);
-    const publishedLayout = safeGet(MODE_STORAGE_KEYS.publishedPlacements);
-    if (publishedLayout) {
-      safeSet(MODE_STORAGE_KEYS.storyPlacements, publishedLayout);
-    } else {
-      safeRemove(MODE_STORAGE_KEYS.storyPlacements);
-    }
   }
 
   document.body.dataset.gameMode = mode;
