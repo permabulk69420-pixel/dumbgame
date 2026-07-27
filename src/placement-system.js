@@ -34,6 +34,7 @@ export function createPlacementSystem({
     new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)
   ]);
 
+  let enabled = true;
   let saved = {};
   try {
     saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -92,6 +93,9 @@ export function createPlacementSystem({
     root.userData.placementId = id;
     root.userData.placementFloorY = options.floorY ?? floorY;
     root.userData.confineToBounds = options.confineToBounds ?? true;
+    root.userData.placementAllowVertical = Boolean(options.allowVertical);
+    root.userData.placementMinY = Number.isFinite(options.minY) ? options.minY : floorY;
+    root.userData.placementMaxY = Number.isFinite(options.maxY) ? options.maxY : 3;
     root.userData.heldBy = null;
     root.updateWorldMatrix(true, true);
     objectBounds.setFromObject(root);
@@ -251,7 +255,7 @@ export function createPlacementSystem({
   }
 
   function beginUse(state) {
-    if (!controllerModes?.isPointing?.(state.handedness)) return;
+    if (!enabled || !controllerModes?.isPointing?.(state.handedness)) return;
     if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
     beginInteraction(state, 'use', findInteractionHit(state, useInteractions, 'useInteraction'));
   }
@@ -261,7 +265,7 @@ export function createPlacementSystem({
   }
 
   function beginGameplayGrab(state) {
-    if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
+    if (!enabled || state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
     const result = findInteractionHit(state, grabInteractions, 'grabInteraction');
     if (beginInteraction(state, 'grab', result)) {
       state.highlight.material.color.setHex(COLOUR_GRAB);
@@ -273,7 +277,7 @@ export function createPlacementSystem({
   }
 
   function beginPlacement(state) {
-    if (!controllerModes?.isDecorationMode?.()) return;
+    if (!enabled || !controllerModes?.isDecorationMode?.()) return;
     if (state.useInteraction || state.grabInteraction || state.placementGrabbed) return;
     const result = findPlaceableHit(state);
     if (!result) return;
@@ -282,7 +286,9 @@ export function createPlacementSystem({
     state.grabDistance = THREE.MathUtils.clamp(result.hit.distance, 0.65, maxGrabDistance);
     state.placementGrabbed.userData.heldBy = state;
     state.highlight.material.color.setHex(COLOUR_DECOR);
-    setStatus('Decorating · hold B/Y · stick left/right rotates · stick up/down changes reach');
+    setStatus(state.placementGrabbed.userData.placementAllowVertical
+      ? 'Authoring marker · hold B/Y · stick left/right rotates · stick up/down changes height'
+      : 'Decorating · hold B/Y · stick left/right rotates · stick up/down changes reach');
   }
 
   function finishPlacement(state) {
@@ -291,7 +297,7 @@ export function createPlacementSystem({
     state.placementGrabbed.userData.heldBy = null;
     state.placementGrabbed = null;
     state.highlight.visible = false;
-    setStatus('Decorating mode · hold B/Y on furniture to move it');
+    setStatus('Decorating mode · hold B/Y on furniture or authoring markers to move them');
   }
 
   function finishEverything(state) {
@@ -389,12 +395,16 @@ export function createPlacementSystem({
 
     const stick = thumbstick(state.inputSource);
     const rotate = deadzone(stick.x);
-    const reach = deadzone(stick.y);
-    state.grabDistance = THREE.MathUtils.clamp(
-      state.grabDistance - reach * 2.2 * dt,
-      0.65,
-      maxGrabDistance
-    );
+    const verticalOrReach = deadzone(stick.y);
+    const allowVertical = Boolean(root.userData.placementAllowVertical);
+
+    if (!allowVertical) {
+      state.grabDistance = THREE.MathUtils.clamp(
+        state.grabDistance - verticalOrReach * 2.2 * dt,
+        0.65,
+        maxGrabDistance
+      );
+    }
     root.rotation.y -= rotate * 1.65 * dt;
 
     const ray = getControllerRay(state);
@@ -410,7 +420,17 @@ export function createPlacementSystem({
       target.z = THREE.MathUtils.clamp(target.z, bounds.minZ + halfZ, bounds.maxZ - halfZ);
     }
 
-    target.y = root.userData.placementFloorY + root.userData.placementFloorLift;
+    if (allowVertical) {
+      root.getWorldPosition(worldPosition);
+      target.y = THREE.MathUtils.clamp(
+        worldPosition.y - verticalOrReach * 0.85 * dt,
+        root.userData.placementMinY,
+        root.userData.placementMaxY
+      );
+    } else {
+      target.y = root.userData.placementFloorY + root.userData.placementFloorLift;
+    }
+
     setWorldPosition(root, target);
     root.updateWorldMatrix(true, true);
 
@@ -457,6 +477,14 @@ export function createPlacementSystem({
   }
 
   function update(dt) {
+    if (!enabled) {
+      for (const state of states) {
+        state.pointer.visible = false;
+        state.highlight.visible = false;
+      }
+      return;
+    }
+
     for (const state of states) {
       const modeState = controllerModes?.getState?.(state.handedness);
       if (modeState?.secondaryPressed) beginPlacement(state);
@@ -467,6 +495,18 @@ export function createPlacementSystem({
       if (updatePlacement(state, dt)) continue;
       showIdleTarget(state);
     }
+  }
+
+  function setEnabled(value) {
+    enabled = Boolean(value);
+    if (!enabled) {
+      for (const state of states) {
+        finishEverything(state);
+        state.pointer.visible = false;
+        state.highlight.visible = false;
+      }
+    }
+    return enabled;
   }
 
   function isHandBusy(handedness) {
@@ -484,6 +524,8 @@ export function createPlacementSystem({
     clearSavedPlacement,
     savePlacement,
     update,
+    setEnabled,
+    isEnabled: () => enabled,
     isHandBusy,
     getPlaceables: () => [...placeables],
     getSavedPlacements: () => JSON.parse(JSON.stringify(saved))
