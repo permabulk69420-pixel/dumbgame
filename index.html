@@ -5,16 +5,42 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#11171a">
   <title>VR Apartment</title>
-  <link rel="stylesheet" href="./styles/main.css">
+  <link rel="stylesheet" href="./styles/main.css?v=2">
 </head>
 <body>
   <main id="app">
-    <div id="loading">Loading the apartment and assets…</div>
+    <section id="start-menu" aria-labelledby="start-menu-title">
+      <div class="start-menu-noise" aria-hidden="true"></div>
+      <div class="start-menu-content">
+        <div class="start-menu-kicker">Working prototype</div>
+        <h1 id="start-menu-title">The Apartment</h1>
+        <p class="start-menu-subtitle">Choose how you want to enter the current build.</p>
+
+        <div class="start-menu-actions">
+          <button type="button" data-start-action="continue-story">
+            <span>Continue Story</span>
+            <small>Load the current story save</small>
+          </button>
+          <button type="button" data-start-action="new-story">
+            <span>New Story</span>
+            <small>Start from a fresh story state</small>
+          </button>
+          <button type="button" data-start-action="creative-build">
+            <span>Creative Build</span>
+            <small>Use a separate sandbox save</small>
+          </button>
+        </div>
+
+        <p class="start-menu-note">Both modes currently open the same apartment. Their saves are already separated for later.</p>
+      </div>
+    </section>
+
+    <div id="loading" hidden>Loading the apartment and assets…</div>
     <section id="panel" aria-live="polite">
       <div id="title">Expanded apartment prototype</div>
       <div id="status">Quest: left stick moves, right stick turns smoothly. No snap turning.</div>
     </section>
   </main>
-  <script type="module" src="./src/main.js?v=15"></script>
+  <script type="module" src="./src/main.js?v=16"></script>
 </body>
 </html>
