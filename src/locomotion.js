@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { HOUSE, PLAYER } from './config.js?v=6';
+import { createFootstepSystem } from './audio/footsteps.js?v=3';
 
 export function thumbstick(source) {
   const gamepad = source?.gamepad;
@@ -35,6 +36,7 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
   const up = new THREE.Vector3(0, 1, 0);
   const headBefore = new THREE.Vector3();
   const headAfter = new THREE.Vector3();
+  const footsteps = createFootstepSystem({ rig, renderer });
 
   let currentSession = null;
   let calibrationPending = true;
@@ -104,6 +106,7 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     if (session !== currentSession) {
       currentSession = session;
       calibrationPending = true;
+      footsteps.reset();
     }
     if (calibrationPending) applyHeightCalibration();
 
@@ -141,14 +144,31 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
 
     camera.updateWorldMatrix(true, false);
     camera.getWorldPosition(headBefore);
-    if (canOccupy(headBefore.x + movement.x, headBefore.z)) rig.position.x += movement.x;
-    if (canOccupy(headBefore.x, headBefore.z + movement.z)) rig.position.z += movement.z;
+
+    let movedX = 0;
+    let movedZ = 0;
+    if (canOccupy(headBefore.x + movement.x, headBefore.z)) {
+      rig.position.x += movement.x;
+      movedX = movement.x;
+    }
+    if (canOccupy(headBefore.x, headBefore.z + movement.z)) {
+      rig.position.z += movement.z;
+      movedZ = movement.z;
+    }
+
+    // Count only movement that actually survived collision checks. Holding the stick
+    // against a wall therefore stays silent instead of producing fake marching sounds.
+    footsteps.advance(Math.hypot(movedX, movedZ));
   }
+
+  window.addEventListener('pagehide', () => footsteps.dispose(), { once: true });
 
   return {
     update,
     canOccupy,
     requestHeightCalibration,
-    getTargetEyeHeight: () => targetEyeHeight
+    getTargetEyeHeight: () => targetEyeHeight,
+    setFootstepsEnabled: footsteps.setEnabled,
+    areFootstepsEnabled: footsteps.isEnabled
   };
 }
