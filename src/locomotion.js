@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { HOUSE, PLAYER } from './config.js';
+import { HOUSE, PLAYER } from './config.js?v=6';
 
 export function thumbstick(source) {
   const gamepad = source?.gamepad;
@@ -33,6 +33,12 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
   const right = new THREE.Vector3();
   const movement = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const headBefore = new THREE.Vector3();
+  const headAfter = new THREE.Vector3();
+
+  let currentSession = null;
+  let calibrationPending = true;
+  let targetEyeHeight = PLAYER.eyeHeight ?? 1.65;
 
   function canOccupy(x, z) {
     for (const wall of collisionSegments) {
@@ -50,9 +56,56 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     });
   }
 
+  function requestHeightCalibration(height = targetEyeHeight) {
+    if (Number.isFinite(height)) targetEyeHeight = THREE.MathUtils.clamp(height, 1.35, 1.95);
+    calibrationPending = true;
+    return targetEyeHeight;
+  }
+
+  function applyHeightCalibration() {
+    camera.updateWorldMatrix(true, false);
+    camera.getWorldPosition(headBefore);
+    if (!Number.isFinite(headBefore.y) || headBefore.y < 0.08 || headBefore.y > 4) return false;
+
+    // Local-floor reports the user's real headset height. Offset the whole rig once so
+    // seated play still walks around at a normal virtual eye height.
+    rig.position.y += targetEyeHeight - headBefore.y;
+    rig.updateMatrixWorld(true);
+    calibrationPending = false;
+    return true;
+  }
+
+  function turnAroundHead(angle) {
+    if (!angle) return;
+
+    camera.updateWorldMatrix(true, false);
+    camera.getWorldPosition(headBefore);
+
+    // Keep the rig itself upright during gameplay. Cinematic wake poses may temporarily
+    // tilt it, but locomotion must remain a flat yaw-only transform.
+    rig.rotation.set(0, rig.rotation.y + angle, 0);
+    rig.updateMatrixWorld(true);
+    camera.getWorldPosition(headAfter);
+
+    // Smooth turning must pivot around the player's head, not around the XR reference-space
+    // origin. This matters enormously when the player is seated away from that origin.
+    rig.position.x += headBefore.x - headAfter.x;
+    rig.position.z += headBefore.z - headAfter.z;
+    rig.updateMatrixWorld(true);
+  }
+
   function update(dt) {
     const session = renderer.xr.getSession();
-    if (!session) return;
+    if (!session) {
+      currentSession = null;
+      return;
+    }
+
+    if (session !== currentSession) {
+      currentSession = session;
+      calibrationPending = true;
+    }
+    if (calibrationPending) applyHeightCalibration();
 
     let leftSource = null;
     let rightSource = null;
@@ -74,7 +127,7 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     const advance = leftCaptured ? 0 : deadzone(left.y);
     const turn = rightCaptured ? 0 : deadzone(rightInput.x);
 
-    rig.rotation.y -= turn * PLAYER.turnSpeed * dt;
+    turnAroundHead(-turn * PLAYER.turnSpeed * dt);
     if (!strafe && !advance) return;
 
     camera.getWorldDirection(forward);
@@ -86,11 +139,16 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     if (movement.lengthSq() > 1) movement.normalize();
     movement.multiplyScalar(PLAYER.moveSpeed * dt);
 
-    const nextX = rig.position.x + movement.x;
-    const nextZ = rig.position.z + movement.z;
-    if (canOccupy(nextX, rig.position.z)) rig.position.x = nextX;
-    if (canOccupy(rig.position.x, nextZ)) rig.position.z = nextZ;
+    camera.updateWorldMatrix(true, false);
+    camera.getWorldPosition(headBefore);
+    if (canOccupy(headBefore.x + movement.x, headBefore.z)) rig.position.x += movement.x;
+    if (canOccupy(headBefore.x, headBefore.z + movement.z)) rig.position.z += movement.z;
   }
 
-  return { update, canOccupy };
+  return {
+    update,
+    canOccupy,
+    requestHeightCalibration,
+    getTargetEyeHeight: () => targetEyeHeight
+  };
 }
