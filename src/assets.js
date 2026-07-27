@@ -4,15 +4,17 @@ import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
-import { loadBedroomBed } from './furniture/bed-setup.js?v=1';
-import { loadBedsideSetup } from './furniture/bedside-setup.js?v=2';
-import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
-import { loadWoodenBat } from './weapons/wooden-bat.js?v=3';
+import { loadBedroomBed } from './furniture/bed-setup.js?v=2';
+import { loadBedsideSetup } from './furniture/bedside-setup.js?v=3';
+import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=3';
+import { loadWoodenBat } from './weapons/wooden-bat.js?v=4';
 import { loadApartmentLightSwitches } from './lighting/light-switches.js?v=2';
+import { registerTopSurfaceCollider } from './physics/apartment-colliders.js?v=1';
 
 export async function loadDecorAssets({
   scene,
   placement,
+  physics = null,
   grips = [],
   hands = null,
   lighting = null,
@@ -27,6 +29,7 @@ export async function loadDecorAssets({
   let bedsideSetup = null;
   let woodenBat = null;
   let lightSwitches = null;
+  let entertainmentSetup = null;
 
   try {
     const gltf = await loadGLB(ASSETS.computerDesk);
@@ -36,17 +39,23 @@ export async function loadDecorAssets({
     desk.rotation.y = 0;
     scene.add(desk);
 
+    // Register the desk itself before monitors and peripherals are parented to it,
+    // otherwise their topmost geometry would become the support surface.
+    const deskPhysics = registerTopSurfaceCollider(physics, desk, {
+      thickness: 0.06,
+      insetX: 0.035,
+      insetZ: 0.035,
+      friction: 0.86
+    });
+    if (deskPhysics) disposers.push(() => deskPhysics.dispose());
+
     const drawerAnimations = createDrawerAnimations(desk, gltf.animations, {
       gameState,
       storageId: 'computer-desk-drawers'
     });
     updaters.push(drawerAnimations.update);
 
-    const computer = await loadComputerSetup({
-      desk,
-      gameState,
-      statusElement
-    });
+    const computer = await loadComputerSetup({ desk, gameState, statusElement });
     updaters.push(computer.update);
     disposers.push(computer.dispose);
 
@@ -99,6 +108,7 @@ export async function loadDecorAssets({
     bedroomBed = await loadBedroomBed({
       scene,
       placement,
+      physics,
       floorY,
       statusElement
     });
@@ -112,6 +122,7 @@ export async function loadDecorAssets({
     bedsideSetup = await loadBedsideSetup({
       scene,
       placement,
+      physics,
       floorY,
       gameState,
       statusElement
@@ -128,6 +139,7 @@ export async function loadDecorAssets({
       scene,
       placement,
       grips,
+      physics,
       controllerModes,
       floorY,
       statusElement
@@ -156,14 +168,15 @@ export async function loadDecorAssets({
   }
 
   try {
-    const entertainment = await loadEntertainmentSetup({
+    entertainmentSetup = await loadEntertainmentSetup({
       scene,
       placement,
+      physics,
       floorY,
       statusElement
     });
-    updaters.push(entertainment.update);
-    disposers.push(entertainment.dispose);
+    updaters.push(entertainmentSetup.update);
+    disposers.push(entertainmentSetup.dispose);
   } catch (error) {
     console.error('TV entertainment setup failed to load', error);
     if (statusElement) statusElement.textContent = 'Apartment loaded; the TV setup failed to load.';
@@ -174,6 +187,7 @@ export async function loadDecorAssets({
     bedside: bedsideSetup,
     bat: woodenBat,
     lightSwitches,
+    entertainment: entertainmentSetup,
     update(dt) {
       for (const updater of updaters) updater(dt);
     },
