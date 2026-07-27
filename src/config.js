@@ -29,7 +29,8 @@ export const ASSETS = Object.freeze({
 
 export const PLAYER = Object.freeze({
   moveSpeed: 2.25,
-  turnSpeed: 1.9
+  turnSpeed: 1.9,
+  eyeHeight: 1.65
 });
 
 export const INTERACTION = Object.freeze({
