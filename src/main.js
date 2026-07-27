@@ -1,9 +1,9 @@
 import { createWorld } from './scene.js';
 import { createMaterials } from './materials.js';
 import { createHouse } from './house.js?v=2';
-import { createPlacementSystem } from './placement-system.js';
+import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=2';
-import { createVRHands } from './hands.js?v=6';
+import { createVRHands } from './hands.js?v=7';
 import { loadDecorAssets } from './assets.js?v=3';
 import { loadPistol } from './weapons/pistol.js?v=3';
 import { loadTorch } from './tools/torch.js?v=3';
@@ -14,6 +14,12 @@ import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js';
 import { createEventScheduler } from './story/event-scheduler.js';
+import {
+  createWakeSequence,
+  readPublishedWakeSetup,
+  WAKE_SEQUENCE_EVENT_ID
+} from './story/wake-sequence.js?v=1';
+import { createWakeAuthoring } from './debug/wake-authoring.js?v=1';
 import { createPerformanceHud } from './debug/performance-hud.js?v=1';
 import { MODE_STORAGE_KEYS, selectStartMode } from './ui/start-menu.js?v=1';
 
@@ -79,6 +85,45 @@ const placement = createPlacementSystem({
   storageKey: placementStorageKey
 });
 
+let hands = {
+  update() {},
+  setVisible() { return false; },
+  isVisible() { return false; }
+};
+let decor = { update() {} };
+let pistol = { update() {} };
+let torch = { update() {} };
+
+const wakeSequence = createWakeSequence({
+  renderer: world.renderer,
+  camera: world.camera,
+  rig: world.rig,
+  placement,
+  performanceHud,
+  clock,
+  statusElement: status,
+  setHandsVisible: (value) => hands.setVisible?.(value)
+});
+
+let wakeAuthoring = {
+  update() {},
+  preview() { return false; },
+  publish() { return null; },
+  setVisible() { return false; },
+  captureSetup() { return null; }
+};
+
+if (isCreativeMode) {
+  wakeAuthoring = createWakeAuthoring({
+    scene: world.scene,
+    renderer: world.renderer,
+    placement,
+    house,
+    wakeSequence,
+    statusElement: status
+  });
+}
+
 let entryDoor = {
   update() {},
   setLocked() { return false; },
@@ -108,10 +153,6 @@ const locomotion = createLocomotion({
   placement
 });
 
-let hands = { update() {} };
-let decor = { update() {} };
-let pistol = { update() {} };
-let torch = { update() {} };
 let displayedClockKey = '';
 
 function refreshClockLabel(state) {
@@ -131,6 +172,7 @@ const handsReady = createVRHands({
   onError: (message) => console.warn(message)
 }).then((value) => {
   hands = value;
+  hands.setVisible(wakeSequence.shouldShowHands());
   return value;
 }).catch((error) => {
   console.error('VR hands failed to load', error);
@@ -176,19 +218,50 @@ handsReady.then((handsSystem) => loadTorch({
   status.textContent = 'Apartment loaded; the torch failed to load.';
 });
 
+function finishOpeningStoryBeat() {
+  gameState.completeEvent(WAKE_SEQUENCE_EVENT_ID);
+  gameState.setStoryPhase('day1_awake');
+  status.textContent = 'Story Mode · awake · investigate the apartment';
+}
+
 world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.position.copy(house.spawn);
   world.rig.rotation.set(0, 0, 0);
+  world.rig.scale.set(1, 1, 1);
   world.camera.position.set(0, 0, 0);
+  world.camera.quaternion.identity();
   performanceHud.reset();
-  status.textContent = isCreativeMode
-    ? 'Creative Build · B/Y moves props · both stick-clicks toggle decorating · A/X points'
-    : 'Story Mode · build controls locked · grip handles or held items · A/X points';
+
+  if (isCreativeMode) {
+    wakeAuthoring.setVisible(true);
+    status.textContent =
+      'Creative Build · move the three wake markers, then point and trigger PREVIEW or PUBLISH';
+    return;
+  }
+
+  const publishedSetup = readPublishedWakeSetup();
+  const openingComplete = gameState.read().completedEvents.includes(WAKE_SEQUENCE_EVENT_ID);
+  if (publishedSetup && !openingComplete) {
+    const started = wakeSequence.start(publishedSetup, { onComplete: finishOpeningStoryBeat });
+    if (!started) {
+      hands.setVisible(true);
+      status.textContent = 'Story Mode · wake sequence could not start · using the normal apartment spawn';
+    }
+  } else {
+    hands.setVisible(true);
+    status.textContent = publishedSetup
+      ? 'Story Mode · grip handles or held items · A/X points'
+      : 'Story Mode · no wake setup published yet · starting at the normal apartment spawn';
+  }
 });
 
 world.renderer.xr.addEventListener('sessionend', () => {
+  wakeSequence.cancel();
+  if (isCreativeMode) wakeAuthoring.setVisible(true);
   world.rig.position.set(0, 0, 0);
   world.rig.rotation.set(0, 0, 0);
+  world.rig.scale.set(1, 1, 1);
+  world.camera.quaternion.identity();
   gameState.save();
   status.textContent = `${gameModeLabel} · left stick moves, right stick turns smoothly.`;
 });
@@ -215,6 +288,11 @@ window.game = {
   setPointing: controllerModes.setPointing,
   setPerformanceHudVisible: performanceHud.setVisible,
   isPerformanceHudVisible: performanceHud.isVisible,
+  previewWakeSequence: wakeAuthoring.preview,
+  publishWakeSetup: wakeAuthoring.publish,
+  readWakeSetup: readPublishedWakeSetup,
+  cancelWakeSequence: wakeSequence.cancel,
+  getWakePhase: wakeSequence.getPhase,
   setEntryDoorLocked: (...args) => entryDoor.setLocked(...args),
   setEntryDoorAngle: (...args) => entryDoor.setAngle(...args),
   getEntryDoorAngle: () => entryDoor.getAngle(),
@@ -232,11 +310,15 @@ world.renderer.setAnimationLoop((time) => {
   lastTime = time;
 
   controllerModes.update(dt);
+  wakeSequence.update(dt);
+  wakeAuthoring.update(dt);
 
   const advanceClock = GAME_TIME.advanceOnlyInXR ? world.renderer.xr.isPresenting : true;
-  clock.update(dt, advanceClock);
+  clock.update(dt, advanceClock && !wakeSequence.isActive());
   dayNight.update(dt);
-  if (!isCreativeMode) events.update({ world, house, placement, clock });
+  if (!isCreativeMode && !wakeSequence.isActive()) {
+    events.update({ world, house, placement, clock });
+  }
 
   placement.update(dt);
   hands.update(dt);
@@ -246,7 +328,7 @@ world.renderer.setAnimationLoop((time) => {
   entryDoor.update(dt);
 
   if (world.renderer.xr.isPresenting) {
-    locomotion.update(dt);
+    if (!wakeSequence.isActive()) locomotion.update(dt);
   } else {
     previewAngle += dt * 0.08;
     const radius = Math.max(house.dimensions.width, house.dimensions.depth) * 1.08;
