@@ -6,7 +6,7 @@ export async function loadGLB(url) {
   return loader.loadAsync(url);
 }
 
-export function prepareModel(root, { castShadow = true, receiveShadow = true } = {}) {
+export function prepareModel(root, { castShadow = false, receiveShadow = true } = {}) {
   root.traverse((child) => {
     if (!child.isMesh) return;
     child.castShadow = castShadow;
