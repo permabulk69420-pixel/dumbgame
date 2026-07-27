@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js';
-import { loadGLB, prepareModel } from '../asset-loader.js';
+import { ASSETS } from '../config.js?v=8';
+import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 
 const SLIDE_REST_Z = -0.004;
 const SLIDE_REAR_Z = 0.026;
@@ -9,7 +9,6 @@ const TRIGGER_TRAVEL = THREE.MathUtils.degToRad(18);
 const MAG_RELEASE_TRAVEL = 0.0025;
 const MAG_SEATED_POSITION = Object.freeze([0, 0.079, 0.0395]);
 const MAG_INSERT_DISTANCE = 0.115;
-const GRAVITY = 7.5;
 const FIRE_TRIGGER_THRESHOLD = 0.76;
 const FIRE_TRIGGER_RESET = 0.18;
 const FIRE_COOLDOWN = 0.11;
@@ -23,14 +22,10 @@ const tempMatrix = new THREE.Matrix4();
 function relativeMatrix(root, locator) {
   root.updateWorldMatrix(true, true);
   locator.updateWorldMatrix(true, false);
-  return new THREE.Matrix4()
-    .copy(root.matrixWorld)
-    .invert()
-    .multiply(locator.matrixWorld);
+  return new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(locator.matrixWorld);
 }
 
 function attachLocatorToGrip(root, locatorMatrix, grip) {
-  // Make the exported locator coincide with the WebXR grip origin.
   grip.add(root);
   tempMatrix.copy(locatorMatrix).invert();
   tempMatrix.decompose(root.position, root.quaternion, root.scale);
@@ -43,38 +38,21 @@ function requireNode(root, name) {
   return node;
 }
 
-function settleOnFloor(root, floorY, velocity, dt, bounds) {
-  velocity.y -= GRAVITY * dt;
-  root.position.addScaledVector(velocity, dt);
-  root.updateWorldMatrix(true, true);
-  bounds.setFromObject(root);
-
-  if (bounds.min.y <= floorY) {
-    root.position.y += floorY - bounds.min.y;
-    velocity.set(0, 0, 0);
-    root.updateMatrixWorld(true);
-    return true;
-  }
-  return false;
-}
-
 function pulseHand(controllerModes, handedness, strength = 0.58, duration = 52) {
   const gamepad = controllerModes?.getState?.(handedness)?.inputSource?.gamepad;
   const actuator = gamepad?.hapticActuators?.[0] || gamepad?.vibrationActuator;
   try {
     if (actuator?.pulse) {
-      const result = actuator.pulse(strength, duration);
-      result?.catch?.(() => {});
+      actuator.pulse(strength, duration)?.catch?.(() => {});
     } else if (actuator?.playEffect) {
-      const result = actuator.playEffect('dual-rumble', {
+      actuator.playEffect('dual-rumble', {
         duration,
         strongMagnitude: strength,
         weakMagnitude: strength * 0.62
-      });
-      result?.catch?.(() => {});
+      })?.catch?.(() => {});
     }
   } catch {
-    // Firing still works on runtimes without controller haptics.
+    // Firing still works without controller haptics.
   }
 }
 
@@ -101,7 +79,6 @@ function createMuzzleFlash(muzzlePoint) {
   const flareA = new THREE.Mesh(new THREE.PlaneGeometry(0.105, 0.048), material.clone());
   flareA.rotation.z = Math.PI * 0.25;
   flash.add(flareA);
-
   const flareB = flareA.clone();
   flareB.rotation.y = Math.PI * 0.5;
   flareB.rotation.z = -Math.PI * 0.22;
@@ -111,7 +88,6 @@ function createMuzzleFlash(muzzlePoint) {
   light.name = 'Runtime_MuzzleLight';
   light.position.set(0, 0, -0.025);
   light.castShadow = false;
-
   muzzlePoint.add(flash, light);
   return { flash, light };
 }
@@ -124,7 +100,6 @@ function createGunshotAudio() {
     if (context) return context;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return null;
-
     context = new AudioContextClass();
     master = context.createDynamicsCompressor();
     master.threshold.value = -10;
@@ -142,8 +117,7 @@ function createGunshotAudio() {
     const data = buffer.getChannelData(0);
     for (let i = 0; i < length; i++) {
       const t = i / ctx.sampleRate;
-      const envelope = Math.exp(-t / decay);
-      data[i] = (Math.random() * 2 - 1) * envelope;
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-t / decay);
     }
     return buffer;
   }
@@ -152,29 +126,28 @@ function createGunshotAudio() {
     const ctx = ensureContext();
     if (!ctx || !master) return;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-
     const now = ctx.currentTime;
-    const pitchVariation = 0.96 + Math.random() * 0.08;
+    const pitch = 0.96 + Math.random() * 0.08;
 
     const crack = ctx.createBufferSource();
     crack.buffer = noiseBuffer(ctx, 0.105, 0.018);
-    crack.playbackRate.value = pitchVariation;
-    const crackHighpass = ctx.createBiquadFilter();
-    crackHighpass.type = 'highpass';
-    crackHighpass.frequency.value = 620;
-    const crackLowpass = ctx.createBiquadFilter();
-    crackLowpass.type = 'lowpass';
-    crackLowpass.frequency.value = 9500;
+    crack.playbackRate.value = pitch;
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 620;
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 9500;
     const crackGain = ctx.createGain();
     crackGain.gain.setValueAtTime(0.72, now);
     crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.105);
-    crack.connect(crackHighpass).connect(crackLowpass).connect(crackGain).connect(master);
+    crack.connect(highpass).connect(lowpass).connect(crackGain).connect(master);
     crack.start(now);
     crack.stop(now + 0.11);
 
     const thump = ctx.createOscillator();
     thump.type = 'triangle';
-    thump.frequency.setValueAtTime(165 * pitchVariation, now);
+    thump.frequency.setValueAtTime(165 * pitch, now);
     thump.frequency.exponentialRampToValueAtTime(48, now + 0.09);
     const thumpGain = ctx.createGain();
     thumpGain.gain.setValueAtTime(0.28, now);
@@ -182,20 +155,6 @@ function createGunshotAudio() {
     thump.connect(thumpGain).connect(master);
     thump.start(now);
     thump.stop(now + 0.105);
-
-    const tail = ctx.createBufferSource();
-    tail.buffer = noiseBuffer(ctx, 0.24, 0.075);
-    tail.playbackRate.value = 0.92 + Math.random() * 0.1;
-    const tailBand = ctx.createBiquadFilter();
-    tailBand.type = 'bandpass';
-    tailBand.frequency.value = 1050;
-    tailBand.Q.value = 0.72;
-    const tailGain = ctx.createGain();
-    tailGain.gain.setValueAtTime(0.18, now + 0.012);
-    tailGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-    tail.connect(tailBand).connect(tailGain).connect(master);
-    tail.start(now + 0.008);
-    tail.stop(now + 0.25);
   };
 }
 
@@ -203,6 +162,7 @@ export async function loadPistol({
   scene,
   placement,
   grips,
+  physics = null,
   controllerModes = null,
   floorY = 0,
   statusElement = null
@@ -221,10 +181,7 @@ export async function loadPistol({
   const magazineRelease = requireNode(modelRoot, 'Magazine_Release');
   const muzzlePoint = requireNode(modelRoot, 'Muzzle_Point');
 
-  // The palm socket is correct spatially, but its roll is opposite the pistol locator.
-  // Rotate the empty locator—not the tracked hand—so the slide sits above the fist.
   gripPoint.rotateZ(PISTOL_GRIP_ROLL);
-
   const pistolGripMatrix = relativeMatrix(modelRoot, gripPoint);
   const magazineGripMatrix = relativeMatrix(magazine, magazineGripPoint);
   const triggerRestX = trigger.rotation.x;
@@ -234,21 +191,38 @@ export async function loadPistol({
   const muzzleEffect = createMuzzleFlash(muzzlePoint);
   const playGunshot = createGunshotAudio();
 
-  // Temporary test position on the computer desk. It remains upright so it is easy to target.
   modelRoot.position.set(3.82, floorY + 0.79, 5.62);
   modelRoot.rotation.set(0, Math.PI * 0.5, 0);
   scene.add(modelRoot);
 
-  const pistolVelocity = new THREE.Vector3();
-  const magazineVelocity = new THREE.Vector3();
-  const pistolBounds = new THREE.Box3();
-  const magazineBounds = new THREE.Box3();
+  const pistolPhysics = physics?.registerDynamicObject?.({
+    root: modelRoot,
+    collider: {
+      shape: 'box',
+      halfExtents: [0.020, 0.071, 0.096],
+      translation: [0, 0.069, -0.004]
+    },
+    mass: 0.85,
+    friction: 0.7,
+    restitution: 0.04,
+    linearDamping: 0.2,
+    angularDamping: 0.45,
+    ccd: true
+  }) || null;
+  const magazinePhysics = physics?.registerDynamicObject?.({
+    root: magazine,
+    mass: 0.17,
+    friction: 0.72,
+    restitution: 0.03,
+    linearDamping: 0.24,
+    angularDamping: 0.5,
+    ccd: true,
+    active: false
+  }) || null;
 
   let holder = null;
   let magazineHolder = null;
-  let pistolFalling = false;
   let magazineSeated = true;
-  let magazineFalling = false;
   let slideReturning = false;
   let slideHeld = false;
   let releaseAnimation = 0;
@@ -262,15 +236,15 @@ export async function loadPistol({
     const index = controllerModes?.states?.findIndex((state) => state.handedness === handedness) ?? -1;
     return index >= 0 ? grips[index] : null;
   };
-
   const setStatus = (text) => {
     if (statusElement) statusElement.textContent = text;
   };
+  const setPistolHeld = (value) => { modelRoot.userData.physicsHeld = Boolean(value); };
+  const setMagazineHeld = (value) => { magazine.userData.physicsHeld = Boolean(value); };
 
   function fireShot() {
     if (!holder || fireCooldown > 0) return;
     fireCooldown = FIRE_COOLDOWN;
-
     if (!magazineSeated) {
       pulseHand(controllerModes, holder.handedness, 0.12, 24);
       setStatus('Click · magazine missing');
@@ -280,15 +254,12 @@ export async function loadPistol({
     muzzleFlashTime = MUZZLE_FLASH_DURATION;
     muzzleEffect.flash.visible = true;
     muzzleEffect.flash.rotation.z = Math.random() * Math.PI;
-    const randomScale = 0.88 + Math.random() * 0.34;
-    muzzleEffect.flash.scale.setScalar(randomScale);
+    muzzleEffect.flash.scale.setScalar(0.88 + Math.random() * 0.34);
     muzzleEffect.light.intensity = MUZZLE_LIGHT_INTENSITY;
-
     if (!slideHeld) {
       slide.position.set(slideRestX, slideRestY, SLIDE_REAR_Z);
       slideReturning = true;
     }
-
     pulseHand(controllerModes, holder.handedness);
     playGunshot();
   }
@@ -308,17 +279,12 @@ export async function loadPistol({
         if (!holder || holder.handedness === handedness) return false;
         const grip = getGrip(handedness);
         if (!grip) return false;
-
         grip.getWorldPosition(tempPosition);
         pistol.worldToLocal(tempPosition);
         slideReturning = false;
         slideHeld = true;
         setStatus('Pull the slide rearward · release grip to let it snap forward');
-        return {
-          grip,
-          startGripZ: tempPosition.z,
-          startSlideZ: slide.position.z
-        };
+        return { grip, startGripZ: tempPosition.z, startSlideZ: slide.position.z };
       },
       update({ context }) {
         context.grip.getWorldPosition(tempPosition);
@@ -345,15 +311,15 @@ export async function loadPistol({
 
   function seatMagazine() {
     disableMagazineInteraction();
+    setMagazineHeld(false);
+    magazinePhysics?.setActive?.(false);
     pistol.add(magazine);
     magazine.position.fromArray(MAG_SEATED_POSITION);
     magazine.quaternion.identity();
     magazine.scale.set(1, 1, 1);
     magazine.updateMatrixWorld(true);
     magazineSeated = true;
-    magazineFalling = false;
     magazineHolder = null;
-    magazineVelocity.set(0, 0, 0);
     setStatus('Magazine inserted');
   }
 
@@ -367,7 +333,7 @@ export async function loadPistol({
         const grip = getGrip(handedness);
         if (!grip) return false;
         magazineHolder = { handedness, grip };
-        magazineFalling = false;
+        setMagazineHeld(true);
         attachLocatorToGrip(magazine, magazineGripMatrix, grip);
         setStatus('Magazine held · release grip near the pistol grip to insert it');
         return { handedness };
@@ -376,16 +342,13 @@ export async function loadPistol({
         if (magazineHolder?.handedness !== handedness) return;
         scene.attach(magazine);
         magazineHolder = null;
-
+        setMagazineHeld(false);
         magazine.getWorldPosition(tempPosition);
         magazineWellPoint.getWorldPosition(tempPositionB);
         if (tempPosition.distanceTo(tempPositionB) <= MAG_INSERT_DISTANCE) {
           seatMagazine();
           return;
         }
-
-        magazineFalling = true;
-        magazineVelocity.set(0, -0.15, 0);
         setStatus('Magazine dropped · grip it and bring it to the pistol grip to reinsert');
       }
     });
@@ -395,15 +358,10 @@ export async function loadPistol({
     if (!magazineSeated) return;
     scene.attach(magazine);
     magazineSeated = false;
-    magazineFalling = true;
-    magazineVelocity.set(0, -0.35, 0);
+    setMagazineHeld(false);
+    magazinePhysics?.setActive?.(true, { linearVelocity: [0, -0.35, 0] });
     enableMagazineInteraction();
     setStatus('Magazine released · grip it to pick it up');
-  }
-
-  function pressMagazineRelease() {
-    releaseAnimation = 1;
-    ejectMagazine();
   }
 
   const unregisterPistol = placement.registerGrabInteraction(modelRoot, {
@@ -413,10 +371,8 @@ export async function loadPistol({
       if (holder) return false;
       const grip = getGrip(handedness);
       if (!grip) return false;
-
       holder = { handedness, grip };
-      pistolFalling = false;
-      pistolVelocity.set(0, 0, 0);
+      setPistolHeld(true);
       triggerLatched = false;
       controllerModes?.setPointing?.(handedness, false);
       attachLocatorToGrip(modelRoot, pistolGripMatrix, grip);
@@ -428,17 +384,18 @@ export async function loadPistol({
       if (holder?.handedness !== handedness) return;
       scene.attach(modelRoot);
       holder = null;
+      setPistolHeld(false);
       triggerLatched = false;
       disableSlideInteraction();
-      pistolFalling = true;
-      pistolVelocity.set(0, -0.1, 0);
       setStatus('Pistol dropped · point at it and hold grip to pick it up');
     }
   });
 
+  setPistolHeld(false);
+  setMagazineHeld(false);
+
   function update(dt) {
     fireCooldown = Math.max(0, fireCooldown - dt);
-
     if (holder) {
       const modeState = controllerModes?.getState?.(holder.handedness);
       const triggerAmount = THREE.MathUtils.clamp(
@@ -447,17 +404,16 @@ export async function loadPistol({
         1
       );
       trigger.rotation.x = triggerRestX - TRIGGER_TRAVEL * triggerAmount;
-
       if (triggerAmount >= FIRE_TRIGGER_THRESHOLD && !triggerLatched) {
         triggerLatched = true;
         fireShot();
       } else if (triggerAmount <= FIRE_TRIGGER_RESET) {
         triggerLatched = false;
       }
-
       if (modeState?.primaryPressed) {
         controllerModes?.setPointing?.(holder.handedness, false);
-        pressMagazineRelease();
+        releaseAnimation = 1;
+        ejectMagazine();
       }
     } else {
       trigger.rotation.x = triggerRestX;
@@ -466,8 +422,8 @@ export async function loadPistol({
 
     if (muzzleFlashTime > 0) {
       muzzleFlashTime = Math.max(0, muzzleFlashTime - dt);
-      const flashRatio = muzzleFlashTime / MUZZLE_FLASH_DURATION;
-      muzzleEffect.light.intensity = MUZZLE_LIGHT_INTENSITY * flashRatio * flashRatio;
+      const ratio = muzzleFlashTime / MUZZLE_FLASH_DURATION;
+      muzzleEffect.light.intensity = MUZZLE_LIGHT_INTENSITY * ratio * ratio;
       muzzleEffect.flash.visible = muzzleFlashTime > 0;
     } else {
       muzzleEffect.flash.visible = false;
@@ -476,9 +432,11 @@ export async function loadPistol({
 
     if (slideReturning) {
       const alpha = 1 - Math.exp(-34 * dt);
-      slide.position.z = THREE.MathUtils.lerp(slide.position.z, SLIDE_REST_Z, alpha);
-      slide.position.x = slideRestX;
-      slide.position.y = slideRestY;
+      slide.position.set(
+        slideRestX,
+        slideRestY,
+        THREE.MathUtils.lerp(slide.position.z, SLIDE_REST_Z, alpha)
+      );
       if (Math.abs(slide.position.z - SLIDE_REST_Z) < 0.00015) {
         slide.position.z = SLIDE_REST_Z;
         slideReturning = false;
@@ -491,23 +449,21 @@ export async function loadPistol({
     } else {
       magazineRelease.position.x = releaseRestX;
     }
-
-    if (pistolFalling) {
-      pistolFalling = !settleOnFloor(modelRoot, floorY, pistolVelocity, dt, pistolBounds);
-    }
-
-    if (!magazineSeated && !magazineHolder && magazineFalling) {
-      magazineFalling = !settleOnFloor(magazine, floorY, magazineVelocity, dt, magazineBounds);
-    }
   }
 
   return {
     root: modelRoot,
+    physicsBody: pistolPhysics,
+    magazinePhysicsBody: magazinePhysics,
     update,
     isHeld: () => Boolean(holder),
     isMagazineSeated: () => magazineSeated,
     fire: fireShot,
     dispose() {
+      setPistolHeld(false);
+      setMagazineHeld(false);
+      pistolPhysics?.dispose?.();
+      magazinePhysics?.dispose?.();
       unregisterPistol();
       disableSlideInteraction();
       disableMagazineInteraction();
