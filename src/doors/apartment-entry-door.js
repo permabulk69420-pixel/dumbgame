@@ -1,7 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS, HOUSE, SCALE } from '../config.js?v=3';
-import { loadGLB, prepareModel } from '../asset-loader.js';
+import { ASSETS, HOUSE, SCALE } from '../config.js?v=10';
+import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 import { createSwingDoor } from './door-system.js?v=1';
+import { loadApartmentInternalDoors } from './apartment-internal-doors.js?v=1';
 
 function requireNode(root, name) {
   const node = root.getObjectByName(name);
@@ -74,7 +75,7 @@ export async function loadApartmentEntryDoor({
   const zone = invisibleZone(0.34, 0.25, 0.32);
   handleInteractionRoot.add(zone);
 
-  return createSwingDoor({
+  const entryDoor = createSwingDoor({
     placement,
     collisionSegments,
     controllerModes,
@@ -91,4 +92,46 @@ export async function loadApartmentEntryDoor({
     maxAngle: THREE.MathUtils.degToRad(5),
     handleAngle: THREE.MathUtils.degToRad(32)
   });
+
+  let internalDoors = {
+    roots: [],
+    doors: [],
+    update() {},
+    getDoor() { return null; },
+    dispose() {}
+  };
+
+  try {
+    internalDoors = await loadApartmentInternalDoors({
+      parent,
+      placement,
+      collisionSegments,
+      controllerModes,
+      floorY,
+      statusElement
+    });
+  } catch (error) {
+    console.error('Internal apartment doors failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the internal doors failed to load.';
+  }
+
+  return {
+    root: entryDoor.root,
+    internalRoots: internalDoors.roots,
+    internalDoors: internalDoors.doors,
+    update(dt) {
+      entryDoor.update(dt);
+      internalDoors.update(dt);
+    },
+    setAngle: entryDoor.setAngle,
+    getAngle: entryDoor.getAngle,
+    setLocked: entryDoor.setLocked,
+    isLocked: entryDoor.isLocked,
+    isOpen: entryDoor.isOpen,
+    getInternalDoor: internalDoors.getDoor,
+    dispose() {
+      entryDoor.dispose();
+      internalDoors.dispose();
+    }
+  };
 }
