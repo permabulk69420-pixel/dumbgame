@@ -93,44 +93,51 @@ export function createFootstepSystem({
     }
   }
 
+  function canPlay() {
+    return enabled && renderer.xr.isPresenting && !isSuppressed();
+  }
+
+  function advance(distance) {
+    if (!canPlay()) {
+      travelled = Math.min(travelled, stepDistance * 0.42);
+      return false;
+    }
+    if (!Number.isFinite(distance) || distance < 0.002 || distance > 0.45) return false;
+
+    travelled += distance;
+    if (travelled < stepDistance) return false;
+
+    travelled %= stepDistance;
+    playStep();
+    return true;
+  }
+
   function reset() {
     rig.getWorldPosition(previousPosition);
     hasPreviousPosition = true;
     travelled = stepDistance * 0.42;
   }
 
+  // Position-tracking fallback for other movers. Player locomotion uses advance() with
+  // the exact collision-approved movement distance, avoiding false steps during turning.
   function update() {
     rig.getWorldPosition(tempPosition);
-
     if (!hasPreviousPosition) {
       previousPosition.copy(tempPosition);
       hasPreviousPosition = true;
       return;
     }
-
-    const dx = tempPosition.x - previousPosition.x;
-    const dz = tempPosition.z - previousPosition.z;
-    const distance = Math.hypot(dx, dz);
+    const distance = Math.hypot(
+      tempPosition.x - previousPosition.x,
+      tempPosition.z - previousPosition.z
+    );
     previousPosition.copy(tempPosition);
-
-    const active = enabled && renderer.xr.isPresenting && !isSuppressed();
-    if (!active) {
-      travelled = Math.min(travelled, stepDistance * 0.42);
-      return;
-    }
-
-    // Ignore spawn placement and reference-space corrections rather than firing a burst.
-    if (distance < 0.002 || distance > 0.45) return;
-
-    travelled += distance;
-    if (travelled < stepDistance) return;
-
-    travelled %= stepDistance;
-    playStep();
+    advance(distance);
   }
 
   return {
     update,
+    advance,
     reset,
     setEnabled(value) {
       enabled = Boolean(value);
