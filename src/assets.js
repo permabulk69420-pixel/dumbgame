@@ -1,15 +1,19 @@
-import { ASSETS } from './config.js?v=5';
+import { ASSETS } from './config.js?v=6';
 import { loadGLB, prepareModel } from './asset-loader.js?v=2';
 import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
 import { loadBedroomBed } from './furniture/bed-setup.js?v=1';
+import { loadBedsideSetup } from './furniture/bedside-setup.js?v=1';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
+import { loadWoodenBat } from './weapons/wooden-bat.js?v=1';
 
 export async function loadDecorAssets({
   scene,
   placement,
+  grips = [],
+  controllerModes = null,
   floorY,
   statusElement,
   gameState = null
@@ -17,6 +21,8 @@ export async function loadDecorAssets({
   const updaters = [];
   const disposers = [];
   let bedroomBed = null;
+  let bedsideSetup = null;
+  let woodenBat = null;
 
   try {
     const gltf = await loadGLB(ASSETS.computerDesk);
@@ -105,6 +111,37 @@ export async function loadDecorAssets({
   }
 
   try {
+    bedsideSetup = await loadBedsideSetup({
+      scene,
+      placement,
+      floorY,
+      gameState,
+      statusElement
+    });
+    updaters.push(bedsideSetup.update);
+    disposers.push(bedsideSetup.dispose);
+  } catch (error) {
+    console.error('Bedside table and alarm clock failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the bedside setup failed to load.';
+  }
+
+  try {
+    woodenBat = await loadWoodenBat({
+      scene,
+      placement,
+      grips,
+      controllerModes,
+      floorY,
+      statusElement
+    });
+    updaters.push(woodenBat.update);
+    disposers.push(woodenBat.dispose);
+  } catch (error) {
+    console.error('Wooden bat failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the wooden bat failed to load.';
+  }
+
+  try {
     const entertainment = await loadEntertainmentSetup({
       scene,
       placement,
@@ -120,6 +157,8 @@ export async function loadDecorAssets({
 
   return {
     bed: bedroomBed,
+    bedside: bedsideSetup,
+    bat: woodenBat,
     update(dt) {
       for (const updater of updaters) updater(dt);
     },
