@@ -12,10 +12,24 @@ export function createWorld(app) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
+
+  // Quest is far more sensitive to fill-rate and shadow work than raw triangle count.
+  // Keep one good directional shadow, but render it cheaply and only when requested.
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType('local-floor');
+  try {
+    // 0.8 renders roughly 64% of the full-resolution pixels across both dimensions.
+    // Fixed foveation preserves the centre of the view while reducing peripheral cost.
+    renderer.xr.setFramebufferScaleFactor(0.8);
+    renderer.xr.setFoveation(1);
+  } catch (error) {
+    console.warn('Quest XR resolution tuning is unavailable on this browser', error);
+  }
   app.appendChild(renderer.domElement);
 
   const vrButton = VRButton.createButton(renderer, {
@@ -36,7 +50,7 @@ export function createWorld(app) {
   sun.name = 'World_Sun';
   sun.position.set(12, 21, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -24;
   sun.shadow.camera.right = 24;
   sun.shadow.camera.top = 24;
@@ -62,6 +76,13 @@ export function createWorld(app) {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
   }
+
+  function refreshShadows() {
+    if (!renderer.shadowMap.enabled) return false;
+    renderer.shadowMap.needsUpdate = true;
+    return true;
+  }
+
   const observer = new ResizeObserver(resize);
   observer.observe(app);
   resize();
@@ -74,6 +95,7 @@ export function createWorld(app) {
     controllers,
     grips,
     lights: { hemisphere, sun, fill },
+    refreshShadows,
     dispose: () => observer.disconnect()
   };
 }
