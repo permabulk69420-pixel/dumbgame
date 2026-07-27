@@ -1,10 +1,10 @@
 import { ASSETS } from './config.js?v=4';
-import { loadGLB, prepareModel } from './asset-loader.js';
-import { loadComputerSetup } from './computer/computer-setup.js';
+import { loadGLB, prepareModel } from './asset-loader.js?v=2';
+import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
-import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=1';
+import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
 
 export async function loadDecorAssets({
   scene,
