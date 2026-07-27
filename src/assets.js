@@ -1,9 +1,10 @@
-import { ASSETS } from './config.js?v=4';
+import { ASSETS } from './config.js?v=5';
 import { loadGLB, prepareModel } from './asset-loader.js?v=2';
 import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
 import { createDrawerAnimations } from './interactions/drawers.js';
 import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js';
+import { loadBedroomBed } from './furniture/bed-setup.js?v=1';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
 
 export async function loadDecorAssets({
@@ -15,6 +16,7 @@ export async function loadDecorAssets({
 }) {
   const updaters = [];
   const disposers = [];
+  let bedroomBed = null;
 
   try {
     const gltf = await loadGLB(ASSETS.computerDesk);
@@ -90,6 +92,19 @@ export async function loadDecorAssets({
   }
 
   try {
+    bedroomBed = await loadBedroomBed({
+      scene,
+      placement,
+      floorY,
+      statusElement
+    });
+    disposers.push(bedroomBed.dispose);
+  } catch (error) {
+    console.error('Queen bed failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the queen bed failed to load.';
+  }
+
+  try {
     const entertainment = await loadEntertainmentSetup({
       scene,
       placement,
@@ -104,6 +119,7 @@ export async function loadDecorAssets({
   }
 
   return {
+    bed: bedroomBed,
     update(dt) {
       for (const updater of updaters) updater(dt);
     },
