@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=8';
+import { ASSETS, HOUSE } from '../config.js?v=8';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 import { LIGHT_ZONES, LIGHT_SWITCH_WALL_SEGMENTS } from './light-zones.js?v=1';
 
@@ -8,7 +8,7 @@ const OFF_ANGLE = THREE.MathUtils.degToRad(-12);
 const POKE_RADIUS = 0.043;
 const POKE_RELEASE_RADIUS = 0.075;
 const WALL_SNAP_DISTANCE = 0.32;
-const WALL_OFFSET = 0.002;
+const WALL_SURFACE_OFFSET = HOUSE.wallThickness * 0.5 + 0.004;
 
 const tempTip = new THREE.Vector3();
 const tempInteraction = new THREE.Vector3();
@@ -45,10 +45,10 @@ function findNearestWall(position) {
   return best;
 }
 
-function snapHeldSwitchToWall(root) {
-  if (!root.userData.heldBy) return;
+function snapSwitchToWall(root, { requireHeld = true } = {}) {
+  if (requireHeld && !root.userData.heldBy) return false;
   const match = findNearestWall(root.position);
-  if (!match) return;
+  if (!match) return false;
 
   const { segment, delta } = match;
   let sign = Math.sign(delta);
@@ -59,14 +59,15 @@ function snapHeldSwitchToWall(root) {
   let normalZ = 0;
   if (segment.axis === 'x') {
     normalX = sign;
-    root.position.x = segment.value + sign * WALL_OFFSET;
+    root.position.x = segment.value + sign * WALL_SURFACE_OFFSET;
   } else {
     normalZ = sign;
-    root.position.z = segment.value + sign * WALL_OFFSET;
+    root.position.z = segment.value + sign * WALL_SURFACE_OFFSET;
   }
 
   root.rotation.set(0, yawForNormal(normalX, normalZ), 0);
   root.updateMatrixWorld(true);
+  return true;
 }
 
 export async function loadApartmentLightSwitches({
@@ -105,6 +106,10 @@ export async function loadApartmentLightSwitches({
       maxY: floorY + 2.15,
       confineToBounds: true
     });
+
+    // Placement saves from the first switch build used the wall centreline. Migrate any
+    // restored switch that is still close to a known wall onto the visible wall surface.
+    snapSwitchToWall(root, { requireHeld: false });
 
     switches.push({
       zone,
@@ -159,7 +164,7 @@ export async function loadApartmentLightSwitches({
     switches,
     update(dt) {
       for (const entry of switches) {
-        snapHeldSwitchToWall(entry.root);
+        snapSwitchToWall(entry.root);
         entry.toggle.rotation.x = THREE.MathUtils.damp(
           entry.toggle.rotation.x,
           entry.targetAngle,
