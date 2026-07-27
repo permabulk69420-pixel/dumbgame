@@ -5,6 +5,7 @@ const THUMBSTICK_BUTTON = 3;
 export function createControllerModes({
   controllers,
   statusElement = null,
+  allowDecoration = true,
   decorationEnabledByDefault = true,
   decorationToggleHoldSeconds = 0.75
 }) {
@@ -22,7 +23,8 @@ export function createControllerModes({
     thumbstickDown: false
   }));
 
-  let decorationMode = Boolean(decorationEnabledByDefault);
+  const decorationAllowed = Boolean(allowDecoration);
+  let decorationMode = decorationAllowed && Boolean(decorationEnabledByDefault);
   let decorationToggleHold = 0;
   let decorationToggleLatched = false;
 
@@ -63,6 +65,11 @@ export function createControllerModes({
   }
 
   function setDecorationMode(enabled) {
+    if (!decorationAllowed) {
+      decorationMode = false;
+      return false;
+    }
+
     decorationMode = Boolean(enabled);
     setStatus(decorationMode
       ? 'Decorating mode ON · hold B/Y to move whole furniture · hold both stick-clicks to turn it off'
@@ -89,6 +96,8 @@ export function createControllerModes({
       if (state.primaryPressed && state.handedness) togglePointing(state.handedness);
     }
 
+    if (!decorationAllowed) return;
+
     const connected = states.filter((state) => state.inputSource);
     const bothSticks = connected.length >= 2 && connected.every((state) => state.thumbstickDown);
 
@@ -113,7 +122,11 @@ export function createControllerModes({
   }
 
   function isDecorationMode() {
-    return decorationMode;
+    return decorationAllowed && decorationMode;
+  }
+
+  function isDecorationAllowed() {
+    return decorationAllowed;
   }
 
   return {
@@ -123,6 +136,7 @@ export function createControllerModes({
     isPointing,
     setPointing,
     togglePointing,
+    isDecorationAllowed,
     isDecorationMode,
     setDecorationMode
   };
