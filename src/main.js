@@ -1,18 +1,18 @@
-import { createWorld } from './scene.js';
-import { createMaterials } from './materials.js';
+import { createWorld } from './scene.js?v=2';
+import { createMaterials } from './materials.js?v=2';
 import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=2';
-import { createVRHands } from './hands.js?v=7';
-import { loadDecorAssets } from './assets.js?v=3';
-import { loadPistol } from './weapons/pistol.js?v=3';
-import { loadTorch } from './tools/torch.js?v=3';
-import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=2';
+import { createVRHands } from './hands.js?v=8';
+import { loadDecorAssets } from './assets.js?v=4';
+import { loadPistol } from './weapons/pistol.js?v=4';
+import { loadTorch } from './tools/torch.js?v=4';
+import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
 import { GAME_TIME, INTERACTION } from './config.js?v=4';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
-import { createDayNightCycle } from './time/day-night-cycle.js';
+import { createDayNightCycle } from './time/day-night-cycle.js?v=2';
 import { createEventScheduler } from './story/event-scheduler.js';
 import {
   createWakeSequence,
@@ -53,7 +53,8 @@ const dayNight = createDayNightCycle({
   renderer: world.renderer,
   lights: world.lights,
   houseRoot: house.root,
-  gameState
+  gameState,
+  camera: world.camera
 });
 const events = createEventScheduler({ gameState });
 
@@ -84,6 +85,29 @@ const placement = createPlacementSystem({
   statusElement: status,
   storageKey: placementStorageKey
 });
+
+const intensityManagedLights = new Set();
+
+function registerIntensityManagedLights(root) {
+  root?.traverse?.((object) => {
+    if (!object.isPointLight && !object.isSpotLight) return;
+    intensityManagedLights.add(object);
+    object.visible = object.intensity > 0.001;
+  });
+}
+
+function updateIntensityManagedLights() {
+  for (const light of intensityManagedLights) {
+    const visible = light.intensity > 0.001;
+    if (light.visible !== visible) light.visible = visible;
+  }
+}
+
+function disableDynamicShadowCasting(root) {
+  root?.traverse?.((object) => {
+    if (object.isMesh) object.castShadow = false;
+  });
+}
 
 let hands = {
   update() {},
@@ -140,6 +164,7 @@ loadApartmentEntryDoor({
   statusElement: status
 }).then((value) => {
   entryDoor = value;
+  world.refreshShadows?.();
 }).catch((error) => {
   console.error('Apartment entry door failed to load', error);
   status.textContent = 'Apartment loaded; the entry door failed to load.';
@@ -187,6 +212,7 @@ loadDecorAssets({
   gameState
 }).then((value) => {
   decor = value;
+  world.refreshShadows?.();
 }).catch(console.error);
 
 handsReady.then((handsSystem) => loadPistol({
@@ -198,6 +224,9 @@ handsReady.then((handsSystem) => loadPistol({
   statusElement: status
 })).then((value) => {
   pistol = value;
+  disableDynamicShadowCasting(value.root);
+  registerIntensityManagedLights(value.root);
+  world.refreshShadows?.();
 }).catch((error) => {
   console.error('Pistol failed to load', error);
   status.textContent = 'Apartment loaded; the pistol failed to load.';
@@ -213,6 +242,9 @@ handsReady.then((handsSystem) => loadTorch({
   statusElement: status
 })).then((value) => {
   torch = value;
+  disableDynamicShadowCasting(value.root);
+  registerIntensityManagedLights(value.root);
+  world.refreshShadows?.();
 }).catch((error) => {
   console.error('Torch failed to load', error);
   status.textContent = 'Apartment loaded; the torch failed to load.';
@@ -231,6 +263,8 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.camera.position.set(0, 0, 0);
   world.camera.quaternion.identity();
   performanceHud.reset();
+  dayNight.apply(true);
+  world.refreshShadows?.();
 
   if (isCreativeMode) {
     wakeAuthoring.setVisible(true);
@@ -288,6 +322,7 @@ window.game = {
   setPointing: controllerModes.setPointing,
   setPerformanceHudVisible: performanceHud.setVisible,
   isPerformanceHudVisible: performanceHud.isVisible,
+  refreshShadows: world.refreshShadows,
   previewWakeSequence: wakeAuthoring.preview,
   publishWakeSetup: wakeAuthoring.publish,
   readWakeSetup: readPublishedWakeSetup,
@@ -326,6 +361,7 @@ world.renderer.setAnimationLoop((time) => {
   pistol.update(dt);
   torch.update(dt);
   entryDoor.update(dt);
+  updateIntensityManagedLights();
 
   if (world.renderer.xr.isPresenting) {
     if (!wakeSequence.isActive()) locomotion.update(dt);
