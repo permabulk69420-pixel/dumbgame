@@ -62,6 +62,9 @@ function createLabelSprite(text, colour) {
     toneMapped: false
   });
   const sprite = new THREE.Sprite(material);
+  // These labels are visual only. THREE.Sprite raycasting expects a camera,
+  // while the VR placement ray is controller-based, so exclude them entirely.
+  sprite.raycast = () => {};
   sprite.scale.set(0.86, 0.185, 1);
   sprite.renderOrder = 10010;
   sprite.userData.disposables = [texture, material];
