@@ -110,7 +110,13 @@ export function createMaterials() {
       side: THREE.DoubleSide
     }),
     ceiling: new THREE.MeshStandardMaterial({ color: 0xeeeae2, roughness: 0.96 }),
-    downlight: new THREE.MeshStandardMaterial({ color: 0xe8e5df, roughness: 0.45, metalness: 0.2 }),
+    downlight: new THREE.MeshStandardMaterial({
+      color: 0xe8e5df,
+      emissive: 0xffd89a,
+      emissiveIntensity: 0.55,
+      roughness: 0.45,
+      metalness: 0.2
+    }),
     grass: new THREE.MeshStandardMaterial({ color: 0x59694f, roughness: 1 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0x77766f, roughness: 1 })
   };
