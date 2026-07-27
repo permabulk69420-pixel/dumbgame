@@ -1,20 +1,33 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
+import { LIGHT_ZONES } from '../lighting/light-zones.js?v=1';
 
 const MINUTES_PER_DAY = 1440;
-const MAX_ACTIVE_INTERIOR_LIGHTS = 3;
 const SHADOW_REFRESH_MINUTES = 30;
+const LIGHT_FLAG_PREFIX = 'room-light:';
 
-export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameState, camera = null }) {
+export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameState }) {
   if (!scene || !renderer || !lights || !gameState) {
     throw new Error('createDayNightCycle requires scene, renderer, lights and gameState');
   }
 
-  const indoorLights = [];
+  const zoneLights = new Map();
+  const commonLights = [];
+  let pointLightIndex = 0;
+
   houseRoot?.traverse((object) => {
     if (!object.isPointLight) return;
     object.userData.dayNightBaseIntensity ??= object.intensity;
     object.visible = false;
-    indoorLights.push(object);
+
+    const zone = LIGHT_ZONES[pointLightIndex] || null;
+    pointLightIndex += 1;
+    if (zone) {
+      object.userData.lightZoneId = zone.id;
+      zoneLights.set(zone.id, object);
+    } else {
+      object.userData.lightZoneId = 'common-area';
+      commonLights.push(object);
+    }
   });
 
   const skyKeys = makeColourKeys([
@@ -45,38 +58,33 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
   const whiteSun = new THREE.Color(0xffefd8);
   const coolMoon = new THREE.Color(0x91aede);
   const dayFill = new THREE.Color(0x91adc1);
-  const viewerPosition = new THREE.Vector3();
-  const lightPosition = new THREE.Vector3();
   let accumulator = 0;
   let lastShadowBucket = -1;
 
-  function updateInteriorLights(night) {
-    // Keep only the three nearest fixtures active, but leave them on during daytime at
-    // reduced strength so the apartment retains the local ceiling-light pools.
+  function flagName(zoneId) {
+    return `${LIGHT_FLAG_PREFIX}${zoneId}`;
+  }
+
+  function isLightZoneEnabled(zoneId, snapshot = gameState.read()) {
+    const zone = LIGHT_ZONES.find((entry) => entry.id === zoneId);
+    if (!zone) return false;
+    const stored = snapshot.flags?.[flagName(zoneId)];
+    return typeof stored === 'boolean' ? stored : zone.defaultOn;
+  }
+
+  function updateInteriorLights(night, snapshot) {
     const interiorFactor = 0.34 + night * 0.66;
-    const activeLights = new Set();
 
-    if (indoorLights.length) {
-      if (camera) {
-        camera.getWorldPosition(viewerPosition);
-      } else {
-        viewerPosition.set(0, 1.6, 0);
-      }
-
-      const nearest = indoorLights
-        .map((light) => {
-          light.getWorldPosition(lightPosition);
-          return { light, distanceSq: lightPosition.distanceToSquared(viewerPosition) };
-        })
-        .sort((a, b) => a.distanceSq - b.distanceSq)
-        .slice(0, MAX_ACTIVE_INTERIOR_LIGHTS);
-
-      for (const entry of nearest) activeLights.add(entry.light);
+    for (const zone of LIGHT_ZONES) {
+      const light = zoneLights.get(zone.id);
+      if (!light) continue;
+      const enabled = isLightZoneEnabled(zone.id, snapshot);
+      light.visible = enabled;
+      light.intensity = light.userData.dayNightBaseIntensity * interiorFactor;
     }
 
-    for (const light of indoorLights) {
-      const visible = activeLights.has(light);
-      if (light.visible !== visible) light.visible = visible;
+    for (const light of commonLights) {
+      light.visible = true;
       light.intensity = light.userData.dayNightBaseIntensity * interiorFactor;
     }
   }
@@ -118,15 +126,24 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
     }
 
     renderer.toneMappingExposure = 0.7 + daylight * 0.38;
-    updateInteriorLights(night);
+    updateInteriorLights(night, state);
 
-    // The shadow map is frozen for Quest performance. Refresh occasionally as the
-    // sun moves, plus whenever callers explicitly force an update after loading.
     const shadowBucket = Math.floor(minute / SHADOW_REFRESH_MINUTES);
     if (force || shadowBucket !== lastShadowBucket) {
       lastShadowBucket = shadowBucket;
       renderer.shadowMap.needsUpdate = true;
     }
+  }
+
+  function setLightZoneEnabled(zoneId, enabled) {
+    if (!zoneLights.has(zoneId)) return false;
+    gameState.setFlag(flagName(zoneId), Boolean(enabled));
+    apply();
+    return Boolean(enabled);
+  }
+
+  function toggleLightZone(zoneId) {
+    return setLightZoneEnabled(zoneId, !isLightZoneEnabled(zoneId));
   }
 
   function update(dt) {
@@ -137,7 +154,15 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
   }
 
   apply(true);
-  return { update, apply, indoorLights };
+  return {
+    update,
+    apply,
+    indoorLights: [...zoneLights.values(), ...commonLights],
+    lightZones: LIGHT_ZONES,
+    isLightZoneEnabled,
+    setLightZoneEnabled,
+    toggleLightZone
+  };
 }
 
 function makeColourKeys(entries) {
