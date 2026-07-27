@@ -16,6 +16,8 @@ export const ASSETS = Object.freeze({
   computerDesk: './assets/models/furniture/ComputerDesk.glb',
   couch: './assets/models/furniture/Two_Seat_Black_Leather_Couch.glb',
   queenBed: './assets/models/furniture/Apartment_Queen_Bed.glb?v=1',
+  bedsideTable: './assets/models/furniture/Apartment_Bedside_Table.glb?v=1',
+  alarmClock: './assets/models/furniture/Apartment_Digital_Alarm_Clock.glb?v=1',
   entertainmentUnit: './assets/models/furniture/Apartment_Entertainment_Unit.glb?v=1',
   apartmentTV: './assets/models/furniture/Apartment_Flatscreen_TV_v2.glb?v=1',
   monitor: './assets/models/computer/modern_flat_monitor_24in.glb',
@@ -24,6 +26,7 @@ export const ASSETS = Object.freeze({
   computerTower: './assets/models/computer/modern_desktop_tower.glb',
   pistol: './assets/models/tools/Generic_Striker_Pistol_v5_final.glb',
   torch: './assets/models/tools/Generic_Handheld_Torch_v2_forward_button.glb',
+  woodenBat: './assets/models/tools/Apartment_Wooden_Bat.glb?v=1',
   apartmentEntryDoor: './assets/models/architecture/Apartment_Entry_Door.glb?v=1'
 });
 
