@@ -7,8 +7,8 @@ import { createVRHands } from './hands.js?v=8';
 import { loadDecorAssets } from './assets.js?v=15';
 import { loadPistol } from './weapons/pistol.js?v=5';
 import { loadTorch } from './tools/torch.js?v=5';
-import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
-import { ASSETS, GAME_TIME, INTERACTION } from './config.js?v=9';
+import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=4';
+import { ASSETS, GAME_TIME, INTERACTION } from './config.js?v=10';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -173,6 +173,9 @@ loadApartmentEntryDoor({
 }).then((value) => {
   entryDoor = value;
   disableDynamicShadowCasting(value.root);
+  for (const internalRoot of value.internalRoots || []) {
+    disableDynamicShadowCasting(internalRoot);
+  }
   world.refreshShadows?.();
 }).catch((error) => {
   console.error('Apartment entry door failed to load', error);
@@ -372,6 +375,7 @@ window.game = {
   setEntryDoorLocked: (...args) => entryDoor.setLocked(...args),
   setEntryDoorAngle: (...args) => entryDoor.setAngle(...args),
   getEntryDoorAngle: () => entryDoor.getAngle(),
+  getInternalDoor: (...args) => entryDoor.getInternalDoor?.(...args) || null,
   resetGameState: gameState.reset
 };
 
