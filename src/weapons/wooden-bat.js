@@ -4,6 +4,7 @@ import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 
 const GRAVITY = 7.5;
 const SUPPORT_PROXY_RADIUS = 0.052;
+const ONE_HAND_GRIP_FLIP = Math.PI;
 
 const tempMatrix = new THREE.Matrix4();
 const tempPrimaryPosition = new THREE.Vector3();
@@ -69,6 +70,12 @@ export async function loadWoodenBat({
   const secondaryGripPoint = requireNode(root, 'GripPoint_Secondary');
   const impactPoint = requireNode(root, 'Impact_Point');
   const collisionAnchor = requireNode(root, 'Bat_Collision');
+
+  // The GLB's +Y axis runs from the handle toward the barrel, while the animated
+  // palm anchor presents the opposite longitudinal direction. Rotate only the
+  // one-hand locator around local Z so the barrel points upward without changing
+  // the palm-facing -Z reference or the separate two-hand steering calculation.
+  mainGripPoint.rotateZ(ONE_HAND_GRIP_FLIP);
   const mainGripMatrix = relativeMatrix(root, mainGripPoint);
   mainGripMatrix.decompose(tempMainLocalPosition, tempMainLocalQuaternion, tempMainLocalScale);
 
