@@ -5,6 +5,7 @@ export const WAKE_SEQUENCE_EVENT_ID = 'opening-wake-sequence';
 
 const POSE_NAMES = Object.freeze(['lying', 'sitting', 'standing']);
 const ONE = new THREE.Vector3(1, 1, 1);
+const UP = new THREE.Vector3(0, 1, 0);
 const TRACKING_SETTLE_FRAMES = 8;
 const MAX_TRACKING_WAIT_SECONDS = 2.5;
 const MIN_TRACKED_HEAD_HEIGHT = 0.08;
@@ -136,6 +137,16 @@ export function createWakeSequence({
   const poseQuaternion = new THREE.Quaternion();
   const localHeadPosition = new THREE.Vector3();
   const localHeadQuaternion = new THREE.Quaternion();
+  const gameplayHeadWorldPosition = new THREE.Vector3();
+  const gameplayHeadWorldQuaternion = new THREE.Quaternion();
+  const gameplayRigWorldPosition = new THREE.Vector3();
+  const gameplayRigWorldQuaternion = new THREE.Quaternion();
+  const rotatedLocalHeadOffset = new THREE.Vector3();
+  const worldHeadEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const localHeadEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const startingRigPosition = new THREE.Vector3();
+  const startingRigQuaternion = new THREE.Quaternion();
+  const startingRigScale = new THREE.Vector3(1, 1, 1);
 
   let active = false;
   let phase = 'idle';
@@ -184,6 +195,19 @@ export function createWakeSequence({
     localHeadMatrix.compose(localHeadPosition, localHeadQuaternion, ONE);
   }
 
+  function applyRigWorldMatrix() {
+    if (rig.parent) {
+      rig.parent.updateWorldMatrix(true, false);
+      parentInverseMatrix.copy(rig.parent.matrixWorld).invert();
+      rigLocalMatrix.copy(parentInverseMatrix).multiply(rigWorldMatrix);
+    } else {
+      rigLocalMatrix.copy(rigWorldMatrix);
+    }
+
+    rigLocalMatrix.decompose(rig.position, rig.quaternion, rig.scale);
+    rig.updateMatrixWorld(true);
+  }
+
   function alignRigToPose(poseName, allowFallback = false) {
     const pose = setup?.poses?.[poseName];
     if (!pose || !renderer.xr.isPresenting) return false;
@@ -197,25 +221,40 @@ export function createWakeSequence({
     posePosition.fromArray(pose.position);
     poseQuaternion.fromArray(pose.quaternion).normalize();
 
-    // The authoring marker is now a literal camera anchor. We solve:
-    // rigWorld * trackedHeadLocal = authoredHeadWorld
-    // therefore rigWorld = authoredHeadWorld * inverse(trackedHeadLocal).
-    // This applies the marker's full position and full rotation for every pose.
+    // During the cinematic the marker is a literal camera anchor. This may tilt the
+    // player rig to cancel the user's real head pitch/roll, which is fine while movement
+    // is locked but must be removed before gameplay starts.
     desiredHeadMatrix.compose(posePosition, poseQuaternion, ONE);
     inverseLocalHeadMatrix.copy(localHeadMatrix).invert();
     rigWorldMatrix.copy(desiredHeadMatrix).multiply(inverseLocalHeadMatrix);
+    applyRigWorldMatrix();
 
-    if (rig.parent) {
-      rig.parent.updateWorldMatrix(true, false);
-      parentInverseMatrix.copy(rig.parent.matrixWorld).invert();
-      rigLocalMatrix.copy(parentInverseMatrix).multiply(rigWorldMatrix);
-    } else {
-      rigLocalMatrix.copy(rigWorldMatrix);
+    lastAlignedPose = poseName;
+    return true;
+  }
+
+  function rebaseRigForGameplay() {
+    if (!renderer.xr.isPresenting) return false;
+    if (!readLocalTrackedHead()) {
+      useFallbackLocalHead();
     }
 
-    rigLocalMatrix.decompose(rig.position, rig.quaternion, rig.scale);
-    rig.updateMatrixWorld(true);
-    lastAlignedPose = poseName;
+    // Capture the camera exactly where the standing marker placed it.
+    camera.updateWorldMatrix(true, false);
+    camera.getWorldPosition(gameplayHeadWorldPosition);
+    camera.getWorldQuaternion(gameplayHeadWorldQuaternion);
+
+    // Keep only a flat yaw on the gameplay rig. The player's real headset handles pitch
+    // and roll from this point onward, so thumbstick turning cannot inherit cinematic tilt.
+    worldHeadEuler.setFromQuaternion(gameplayHeadWorldQuaternion, 'YXZ');
+    localHeadEuler.setFromQuaternion(localHeadQuaternion, 'YXZ');
+    gameplayRigWorldQuaternion.setFromAxisAngle(UP, worldHeadEuler.y - localHeadEuler.y);
+
+    // Preserve the camera's world position exactly while changing the rig decomposition.
+    rotatedLocalHeadOffset.copy(localHeadPosition).applyQuaternion(gameplayRigWorldQuaternion);
+    gameplayRigWorldPosition.copy(gameplayHeadWorldPosition).sub(rotatedLocalHeadOffset);
+    rigWorldMatrix.compose(gameplayRigWorldPosition, gameplayRigWorldQuaternion, ONE);
+    applyRigWorldMatrix();
     return true;
   }
 
@@ -230,6 +269,9 @@ export function createWakeSequence({
       eyelids.setOpenness(0);
       alignRigToPose('standing', true);
     } else if (phase === 'openStanding') {
+      // Rebase while the eyes are still shut. The standing camera stays in the same place,
+      // but locomotion resumes with a clean upright rig and a sensible turn pivot.
+      rebaseRigForGameplay();
       setHandsVisible(true);
     }
   }
@@ -250,11 +292,12 @@ export function createWakeSequence({
     setup = null;
     onComplete = null;
     preview = false;
+    lastAlignedPose = null;
     eyelids.object.visible = false;
     eyelids.setOpenness(1);
     restoreSystems();
     setStatus(wasPreview
-      ? 'Wake preview complete · move the markers or publish this setup'
+      ? 'Wake preview complete · upright gameplay height restored'
       : 'Awake · normal movement and interactions restored');
     callback?.();
   }
@@ -270,6 +313,9 @@ export function createWakeSequence({
     previousPlacementEnabled = placement?.isEnabled?.() ?? true;
     previousHudVisible = performanceHud?.isVisible?.() ?? true;
     previousClockPaused = clock?.paused ?? false;
+    startingRigPosition.copy(rig.position);
+    startingRigQuaternion.copy(rig.quaternion);
+    startingRigScale.copy(rig.scale);
 
     placement?.setEnabled?.(false);
     performanceHud?.setVisible?.(false);
@@ -295,6 +341,10 @@ export function createWakeSequence({
     onComplete = null;
     preview = false;
     lastAlignedPose = null;
+    rig.position.copy(startingRigPosition);
+    rig.quaternion.copy(startingRigQuaternion);
+    rig.scale.copy(startingRigScale);
+    rig.updateMatrixWorld(true);
     eyelids.object.visible = false;
     eyelids.setOpenness(1);
     restoreSystems();
@@ -359,6 +409,7 @@ export function createWakeSequence({
     cancel,
     update,
     alignRigToPose,
+    rebaseRigForGameplay,
     isActive: () => active,
     shouldShowHands: () => !active || phase === 'openStanding',
     getPhase: () => phase,
