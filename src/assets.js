@@ -1,4 +1,4 @@
-import { ASSETS } from './config.js?v=8';
+import { ASSETS } from './config.js?v=9';
 import { loadGLB, prepareModel } from './asset-loader.js?v=2';
 import { loadComputerSetup } from './computer/computer-setup.js?v=2';
 import { registerComputerPlaceables } from './computer/computer-placeables.js';
@@ -9,6 +9,7 @@ import { loadBedsideSetup } from './furniture/bedside-setup.js?v=6';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=3';
 import { loadWoodenBat } from './weapons/wooden-bat.js?v=4';
 import { loadApartmentLightSwitches } from './lighting/light-switches.js?v=2';
+import { loadApartmentWindows } from './windows/apartment-windows.js?v=1';
 import { registerTopSurfaceCollider } from './physics/apartment-colliders.js?v=1';
 
 export async function loadDecorAssets({
@@ -29,6 +30,7 @@ export async function loadDecorAssets({
   let bedsideSetup = null;
   let woodenBat = null;
   let lightSwitches = null;
+  let apartmentWindows = null;
   let entertainmentSetup = null;
 
   try {
@@ -168,6 +170,20 @@ export async function loadDecorAssets({
   }
 
   try {
+    const apartmentRoot = scene.getObjectByName('Apartment');
+    apartmentWindows = await loadApartmentWindows({
+      parent: apartmentRoot,
+      placement,
+      gameState,
+      statusElement
+    });
+    disposers.push(apartmentWindows.dispose);
+  } catch (error) {
+    console.error('Apartment windows failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the replacement windows failed to load.';
+  }
+
+  try {
     entertainmentSetup = await loadEntertainmentSetup({
       scene,
       placement,
@@ -187,6 +203,7 @@ export async function loadDecorAssets({
     bedside: bedsideSetup,
     bat: woodenBat,
     lightSwitches,
+    windows: apartmentWindows,
     entertainment: entertainmentSetup,
     update(dt) {
       for (const updater of updaters) updater(dt);
