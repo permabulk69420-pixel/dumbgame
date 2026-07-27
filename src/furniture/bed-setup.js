@@ -1,5 +1,6 @@
-import { ASSETS } from '../config.js?v=5';
+import { ASSETS } from '../config.js?v=8';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
+import { registerBedColliders } from '../physics/apartment-colliders.js?v=1';
 
 function optionalNode(root, name) {
   return root.getObjectByName(name) || null;
@@ -8,6 +9,7 @@ function optionalNode(root, name) {
 export async function loadBedroomBed({
   scene,
   placement,
+  physics = null,
   floorY,
   statusElement = null
 }) {
@@ -27,6 +29,7 @@ export async function loadBedroomBed({
   root.rotation.y = Math.PI;
   scene.add(root);
   placement.registerPlaceable(root, 'bedroom-queen-bed', { floorY });
+  const physicsHandle = registerBedColliders(physics, root);
 
   if (statusElement) {
     statusElement.textContent = 'Queen bed loaded · Creative Build can move it with B/Y';
@@ -40,6 +43,7 @@ export async function loadBedroomBed({
     mattressAnchor,
     collisionAnchor,
     dispose() {
+      physicsHandle?.dispose?.();
       placement.unregisterPlaceable(root);
       root.removeFromParent();
     }
