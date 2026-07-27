@@ -101,14 +101,19 @@ export function createMaterials() {
     timber: new THREE.MeshStandardMaterial({ color: 0x4b3a2e, roughness: 0.86 }),
     roof: new THREE.MeshStandardMaterial({ map: roof, color: 0xffffff, roughness: 0.9 }),
     gutter: new THREE.MeshStandardMaterial({ color: 0x3e464a, roughness: 0.7, metalness: 0.18 }),
-    glass: new THREE.MeshPhysicalMaterial({
-      color: 0xb9d7df,
-      roughness: 0.12,
+
+    // Physical transmission forced an extra scene render for every XR frame. A lightly
+    // tinted standard transparent pane looks almost identical here without that pass.
+    glass: new THREE.MeshStandardMaterial({
+      color: 0x9fc5cf,
+      roughness: 0.18,
+      metalness: 0.02,
       transparent: true,
-      opacity: 0.34,
-      transmission: 0.22,
-      side: THREE.DoubleSide
+      opacity: 0.23,
+      depthWrite: false,
+      side: THREE.FrontSide
     }),
+
     ceiling: new THREE.MeshStandardMaterial({ color: 0xeeeae2, roughness: 0.96 }),
     downlight: new THREE.MeshStandardMaterial({
       color: 0xe8e5df,
