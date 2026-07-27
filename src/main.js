@@ -2,13 +2,13 @@ import { createWorld } from './scene.js?v=2';
 import { createMaterials } from './materials.js?v=2';
 import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
-import { createLocomotion } from './locomotion.js?v=2';
+import { createLocomotion } from './locomotion.js?v=3';
 import { createVRHands } from './hands.js?v=8';
 import { loadDecorAssets } from './assets.js?v=5';
 import { loadPistol } from './weapons/pistol.js?v=4';
 import { loadTorch } from './tools/torch.js?v=4';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
-import { GAME_TIME, INTERACTION } from './config.js?v=5';
+import { GAME_TIME, INTERACTION } from './config.js?v=6';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -18,8 +18,8 @@ import {
   createWakeSequence,
   readPublishedWakeSetup,
   WAKE_SEQUENCE_EVENT_ID
-} from './story/wake-sequence.js?v=3';
-import { createWakeAuthoring } from './debug/wake-authoring.js?v=2';
+} from './story/wake-sequence.js?v=4';
+import { createWakeAuthoring } from './debug/wake-authoring.js?v=3';
 import { createPerformanceHud } from './debug/performance-hud.js?v=1';
 import { MODE_STORAGE_KEYS, selectStartMode } from './ui/start-menu.js?v=2';
 
@@ -267,6 +267,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   world.rig.scale.set(1, 1, 1);
   world.camera.position.set(0, 0, 0);
   world.camera.quaternion.identity();
+  locomotion.requestHeightCalibration();
   performanceHud.reset();
   dayNight.apply(true);
   world.refreshShadows?.();
@@ -274,7 +275,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   if (isCreativeMode) {
     wakeAuthoring.setVisible(true);
     status.textContent =
-      'Creative Build · furniture layout is shared with Story · move wake markers, then PREVIEW or PUBLISH';
+      'Creative Build · seated height calibrated · standing wake marker is fixed at gameplay height';
     return;
   }
 
@@ -328,6 +329,8 @@ window.game = {
   setPerformanceHudVisible: performanceHud.setVisible,
   isPerformanceHudVisible: performanceHud.isVisible,
   refreshShadows: world.refreshShadows,
+  recalibrateHeight: locomotion.requestHeightCalibration,
+  getTargetEyeHeight: locomotion.getTargetEyeHeight,
   getBedroomBed: () => decor.bed || null,
   previewWakeSequence: wakeAuthoring.preview,
   publishWakeSetup: wakeAuthoring.publish,
