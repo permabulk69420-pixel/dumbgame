@@ -2,7 +2,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 
 const MINUTES_PER_DAY = 1440;
 const MAX_ACTIVE_INTERIOR_LIGHTS = 3;
-const INTERIOR_LIGHT_NIGHT_THRESHOLD = 0.08;
 const SHADOW_REFRESH_MINUTES = 30;
 
 export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameState, camera = null }) {
@@ -52,11 +51,12 @@ export function createDayNightCycle({ scene, renderer, lights, houseRoot, gameSt
   let lastShadowBucket = -1;
 
   function updateInteriorLights(night) {
-    const interiorFactor = 0.12 + night * 0.88;
-    const shouldIlluminate = night > INTERIOR_LIGHT_NIGHT_THRESHOLD;
+    // Keep only the three nearest fixtures active, but leave them on during daytime at
+    // reduced strength so the apartment retains the local ceiling-light pools.
+    const interiorFactor = 0.34 + night * 0.66;
     const activeLights = new Set();
 
-    if (shouldIlluminate && indoorLights.length) {
+    if (indoorLights.length) {
       if (camera) {
         camera.getWorldPosition(viewerPosition);
       } else {
