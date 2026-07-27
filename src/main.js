@@ -18,7 +18,7 @@ import {
   createWakeSequence,
   readPublishedWakeSetup,
   WAKE_SEQUENCE_EVENT_ID
-} from './story/wake-sequence.js?v=1';
+} from './story/wake-sequence.js?v=2';
 import { createWakeAuthoring } from './debug/wake-authoring.js?v=2';
 import { createPerformanceHud } from './debug/performance-hud.js?v=1';
 import { MODE_STORAGE_KEYS, selectStartMode } from './ui/start-menu.js?v=2';
