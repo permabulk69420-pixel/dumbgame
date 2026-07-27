@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS } from '../config.js?v=7';
+import { ASSETS } from '../config.js?v=8';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
+import { registerBedsideColliders } from '../physics/apartment-colliders.js?v=1';
 
 const DRAWER_CLOSED_Z = -0.040;
 const DRAWER_OPEN_Z = -0.340;
@@ -104,6 +105,7 @@ function prepareAlarmIndicator(indicator) {
 export async function loadBedsideSetup({
   scene,
   placement,
+  physics = null,
   floorY = 0,
   gameState = null,
   statusElement = null
@@ -128,6 +130,7 @@ export async function loadBedsideSetup({
   drawerPivot.position.z = THREE.MathUtils.lerp(DRAWER_CLOSED_Z, DRAWER_OPEN_Z, drawerAmount);
 
   placement.registerPlaceable(tableRoot, 'bedroom-bedside-table', { floorY });
+  const physicsHandle = registerBedsideColliders(physics, tableRoot, drawerPivot);
 
   const unregisterDrawer = placement.registerGrabInteraction(drawerPivot, {
     id: 'bedside-table-drawer',
@@ -234,6 +237,7 @@ export async function loadBedsideSetup({
       );
     },
     dispose() {
+      physicsHandle?.dispose?.();
       unregisterAlarmButton();
       unregisterDrawer();
       unsubscribeState();
