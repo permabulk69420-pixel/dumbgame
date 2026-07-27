@@ -42,6 +42,9 @@ function createClockDisplay(timeDisplay) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.flipY = false;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.repeat.x = -1;
+  texture.offset.x = 1;
 
   cloneNodeMaterials(timeDisplay);
   timeDisplay.traverse((child) => {
@@ -146,6 +149,7 @@ export async function loadBedsideSetup({
       return { controllerStart, slideAxisWorld, startAmount: drawerAmount };
     },
     update({ controller, context }) {
+      tempControllerPosition.copy(context.controllerStart);
       controller.getWorldPosition(tempControllerPosition);
       const travel = tempControllerPosition
         .sub(context.controllerStart)
