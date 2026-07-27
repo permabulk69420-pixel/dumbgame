@@ -15,6 +15,7 @@ export const ASSETS = Object.freeze({
   rightHand: './assets/models/hands/RightHand.glb',
   computerDesk: './assets/models/furniture/ComputerDesk.glb',
   couch: './assets/models/furniture/Two_Seat_Black_Leather_Couch.glb',
+  queenBed: './assets/models/furniture/Apartment_Queen_Bed.glb?v=1',
   entertainmentUnit: './assets/models/furniture/Apartment_Entertainment_Unit.glb?v=1',
   apartmentTV: './assets/models/furniture/Apartment_Flatscreen_TV_v2.glb?v=1',
   monitor: './assets/models/computer/modern_flat_monitor_24in.glb',
