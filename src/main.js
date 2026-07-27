@@ -13,6 +13,7 @@ import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
 import { createDayNightCycle } from './time/day-night-cycle.js?v=3';
+import { createExteriorMist } from './environment/exterior-mist.js?v=1';
 import { createAudioManager } from './audio/audio-manager.js?v=1';
 import { createPhysicsWorld } from './physics/physics-world.js?v=1';
 import { registerApartmentShell } from './physics/apartment-colliders.js?v=1';
@@ -60,6 +61,7 @@ const dayNight = createDayNightCycle({
   houseRoot: house.root,
   gameState
 });
+const exteriorMist = createExteriorMist({ scene: world.scene });
 const audio = createAudioManager({ wakeMusicUrl: ASSETS.wakeMusic });
 const events = createEventScheduler({ gameState });
 
@@ -361,6 +363,7 @@ window.game = {
   getBedsideSetup: () => decor.bedside || null,
   getBedroomBat: () => decor.bat || null,
   getLightSwitches: () => decor.lightSwitches || null,
+  getExteriorMistDistance: () => exteriorMist.visibilityDistance,
   isLightOn: dayNight.isLightZoneEnabled,
   setLightOn: dayNight.setLightZoneEnabled,
   toggleLight: dayNight.toggleLightZone,
@@ -382,6 +385,7 @@ window.game = {
 window.addEventListener('pagehide', () => {
   gameState.save();
   audio.dispose();
+  exteriorMist.dispose();
   physics.dispose();
 });
 
@@ -400,6 +404,7 @@ world.renderer.setAnimationLoop((time) => {
   const advanceClock = GAME_TIME.advanceOnlyInXR ? world.renderer.xr.isPresenting : true;
   clock.update(dt, advanceClock && !wakeSequence.isActive());
   dayNight.update(dt);
+  exteriorMist.update(dt);
   if (!isCreativeMode && !wakeSequence.isActive()) {
     events.update({ world, house, placement, clock });
   }
