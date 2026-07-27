@@ -56,6 +56,7 @@ export async function createVRHands({
     right: sources[1].status === 'fulfilled' ? sources[1].value : null
   };
 
+  let visible = true;
   const states = controllers.map((controller, index) => {
     const objectGrip = new THREE.Group();
     objectGrip.name = `controller-${index}-held-object-anchor`;
@@ -127,6 +128,7 @@ export async function createVRHands({
     anchor.name = `${handedness}-hand-grip-offset`;
     anchor.position.fromArray(offset.position);
     anchor.rotation.set(...offset.rotation);
+    anchor.visible = visible;
     anchor.add(root);
     state.grip.add(anchor);
 
@@ -193,6 +195,14 @@ export async function createVRHands({
     }
   }
 
+  function setVisible(value) {
+    visible = Boolean(value);
+    for (const state of states) {
+      if (state.handAnchor) state.handAnchor.visible = visible;
+    }
+    return visible;
+  }
+
   function getIndexTipWorldPosition(handedness, target) {
     const state = states.find((item) => item.handedness === handedness);
     if (!state?.indexTip || !target?.isVector3) return false;
@@ -205,6 +215,8 @@ export async function createVRHands({
     update,
     states,
     objectGrips: states.map((state) => state.objectGrip),
+    setVisible,
+    isVisible: () => visible,
     getIndexTipWorldPosition
   };
 }
