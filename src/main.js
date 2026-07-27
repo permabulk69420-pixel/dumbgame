@@ -4,11 +4,11 @@ import { createHouse } from './house.js?v=2';
 import { createPlacementSystem } from './placement-system.js?v=2';
 import { createLocomotion } from './locomotion.js?v=2';
 import { createVRHands } from './hands.js?v=8';
-import { loadDecorAssets } from './assets.js?v=4';
+import { loadDecorAssets } from './assets.js?v=5';
 import { loadPistol } from './weapons/pistol.js?v=4';
 import { loadTorch } from './tools/torch.js?v=4';
 import { loadApartmentEntryDoor } from './doors/apartment-entry-door.js?v=3';
-import { GAME_TIME, INTERACTION } from './config.js?v=4';
+import { GAME_TIME, INTERACTION } from './config.js?v=5';
 import { createControllerModes } from './input/controller-modes.js?v=2';
 import { createGameState } from './state/game-state.js';
 import { createGameClock } from './time/game-clock.js';
@@ -21,7 +21,7 @@ import {
 } from './story/wake-sequence.js?v=1';
 import { createWakeAuthoring } from './debug/wake-authoring.js?v=2';
 import { createPerformanceHud } from './debug/performance-hud.js?v=1';
-import { MODE_STORAGE_KEYS, selectStartMode } from './ui/start-menu.js?v=1';
+import { MODE_STORAGE_KEYS, selectStartMode } from './ui/start-menu.js?v=2';
 
 const app = document.getElementById('app');
 const loading = document.getElementById('loading');
@@ -117,7 +117,7 @@ let hands = {
   setVisible() { return false; },
   isVisible() { return false; }
 };
-let decor = { update() {} };
+let decor = { update() {}, bed: null };
 let pistol = { update() {} };
 let torch = { update() {} };
 
@@ -274,7 +274,7 @@ world.renderer.xr.addEventListener('sessionstart', () => {
   if (isCreativeMode) {
     wakeAuthoring.setVisible(true);
     status.textContent =
-      'Creative Build · move the three wake markers, then point and trigger PREVIEW or PUBLISH';
+      'Creative Build · furniture layout is shared with Story · move wake markers, then PREVIEW or PUBLISH';
     return;
   }
 
@@ -328,6 +328,7 @@ window.game = {
   setPerformanceHudVisible: performanceHud.setVisible,
   isPerformanceHudVisible: performanceHud.isVisible,
   refreshShadows: world.refreshShadows,
+  getBedroomBed: () => decor.bed || null,
   previewWakeSequence: wakeAuthoring.preview,
   publishWakeSetup: wakeAuthoring.publish,
   readWakeSetup: readPublishedWakeSetup,
