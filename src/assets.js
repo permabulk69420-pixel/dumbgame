@@ -7,7 +7,7 @@ import { registerSlidingDeskInteractions } from './interactions/sliding-grab.js'
 import { loadBedroomBed } from './furniture/bed-setup.js?v=1';
 import { loadBedsideSetup } from './furniture/bedside-setup.js?v=2';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=2';
-import { loadWoodenBat } from './weapons/wooden-bat.js?v=2';
+import { loadWoodenBat } from './weapons/wooden-bat.js?v=3';
 
 export async function loadDecorAssets({
   scene,
