@@ -14,41 +14,42 @@ export function createPlacementSystem(options = {}) {
   );
 
   const system = createBasePlacementSystem(options);
-  const visualHelpers = [
-    ...collectNewLineObjects(options.scene, sceneChildrenBefore),
-    ...(options.controllers || []).flatMap((controller) =>
-      collectNewLineObjects(controller, controllerChildrenBefore.get(controller) || new Set())
-    )
-  ];
+  const outlineHelpers = collectNewLineObjects(options.scene, sceneChildrenBefore);
+  const pointerHelpers = (options.controllers || []).flatMap((controller) =>
+    collectNewLineObjects(controller, controllerChildrenBefore.get(controller) || new Set())
+  );
 
-  for (const helper of visualHelpers) {
+  for (const helper of [...outlineHelpers, ...pointerHelpers]) {
     helper.userData.ignoreLaser = true;
-    if (!helper.name) helper.name = 'PlacementVisualHelper';
+    if (!helper.name) helper.name = helper.isLineSegments
+      ? 'PlacementOutlineHelper'
+      : 'PlacementPointerHelper';
   }
 
-  // Creative mode needs authoring rays and bounds. Story mode keeps all of the
-  // interaction logic, but removes the large wire boxes and controller rays.
-  let helpersVisible = Boolean(options.controllerModes?.isDecorationAllowed?.());
+  // Story mode keeps the useful controller pointer so the player can see which
+  // object the grip ray has acquired, but suppresses the large wireframe bounds.
+  // Creative mode retains both because the bounds are useful while authoring.
+  let outlinesVisible = Boolean(options.controllerModes?.isDecorationAllowed?.());
 
-  function applyVisibility() {
-    if (helpersVisible) return;
-    for (const helper of visualHelpers) helper.visible = false;
+  function applyOutlineVisibility() {
+    if (outlinesVisible) return;
+    for (const helper of outlineHelpers) helper.visible = false;
   }
 
-  applyVisibility();
+  applyOutlineVisibility();
   const baseUpdate = system.update.bind(system);
 
   return {
     ...system,
     update(dt) {
       baseUpdate(dt);
-      applyVisibility();
+      applyOutlineVisibility();
     },
     setVisualHelpersVisible(value) {
-      helpersVisible = Boolean(value);
-      applyVisibility();
-      return helpersVisible;
+      outlinesVisible = Boolean(value);
+      applyOutlineVisibility();
+      return outlinesVisible;
     },
-    areVisualHelpersVisible: () => helpersVisible
+    areVisualHelpersVisible: () => outlinesVisible
   };
 }
