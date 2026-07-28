@@ -6,6 +6,8 @@ const LASER_RANGE = 45;
 const muzzleOrigin = new THREE.Vector3();
 const muzzleDirection = new THREE.Vector3();
 const muzzleQuaternion = new THREE.Quaternion();
+const laserEndpointWorld = new THREE.Vector3();
+const laserEndpointLocal = new THREE.Vector3();
 const laserRaycaster = new THREE.Raycaster();
 
 function isDescendantOf(object, ancestor) {
@@ -15,11 +17,19 @@ function isDescendantOf(object, ancestor) {
   return false;
 }
 
-function hasHeldAncestor(object) {
+function hasIgnoredAncestor(object) {
   for (let current = object; current; current = current.parent) {
-    if (current.userData?.physicsHeld) return true;
+    if (current.userData?.ignoreLaser) return true;
+    if (current.name === 'PerformanceHUD') return true;
   }
   return false;
+}
+
+function hasVisibleMaterial(object) {
+  const materials = Array.isArray(object.material) ? object.material : [object.material];
+  return materials.some((material) =>
+    material && material.visible !== false && (!material.transparent || material.opacity > 0.05)
+  );
 }
 
 function createLaser(muzzlePoint) {
@@ -28,21 +38,25 @@ function createLaser(muzzlePoint) {
   group.visible = false;
   group.userData.ignoreLaser = true;
 
-  const beamMaterial = new THREE.MeshBasicMaterial({
+  const beamGeometry = new THREE.BufferGeometry();
+  beamGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, 0, -0.018,
+    0, 0, -1
+  ], 3));
+
+  const beamMaterial = new THREE.LineBasicMaterial({
     color: 0xff1010,
     transparent: true,
-    opacity: 0.48,
+    opacity: 0.82,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     toneMapped: false
   });
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.00125, 0.00125, 1, 6, 1, true),
-    beamMaterial
-  );
+
+  const beam = new THREE.Line(beamGeometry, beamMaterial);
   beam.name = 'Runtime_PistolLaserBeam';
-  beam.rotation.x = Math.PI * 0.5;
   beam.renderOrder = 40;
+  beam.frustumCulled = false;
   group.add(beam);
 
   const dotMaterial = new THREE.MeshBasicMaterial({
@@ -53,9 +67,10 @@ function createLaser(muzzlePoint) {
     depthWrite: false,
     toneMapped: false
   });
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), dotMaterial);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.014, 10, 8), dotMaterial);
   dot.name = 'Runtime_PistolLaserDot';
   dot.renderOrder = 41;
+  dot.frustumCulled = false;
   group.add(dot);
 
   muzzlePoint.add(group);
@@ -71,6 +86,7 @@ export async function loadPistol(options) {
 
   const laser = createLaser(muzzlePoint);
   const scene = options.scene;
+  const excludedGripRoots = (options.grips || []).filter(Boolean);
 
   function updateMuzzleRay() {
     muzzlePoint.updateWorldMatrix(true, false);
@@ -88,10 +104,10 @@ export async function loadPistol(options) {
     const intersections = laserRaycaster.intersectObjects(scene.children, true);
     return intersections.find(({ object }) => {
       if (!object?.isMesh || !object.visible) return false;
-      if (object.userData?.ignoreLaser) return false;
       if (isDescendantOf(object, pistol.root)) return false;
-      if (hasHeldAncestor(object)) return false;
-      return object.material?.visible !== false;
+      if (excludedGripRoots.some((root) => isDescendantOf(object, root))) return false;
+      if (hasIgnoredAncestor(object)) return false;
+      return hasVisibleMaterial(object);
     }) || null;
   }
 
@@ -102,12 +118,22 @@ export async function loadPistol(options) {
 
     updateMuzzleRay();
     const hit = findLaserHit();
-    const distance = THREE.MathUtils.clamp(hit?.distance ?? LASER_RANGE, 0.04, LASER_RANGE);
+    if (hit) {
+      laserEndpointWorld.copy(hit.point);
+    } else {
+      laserEndpointWorld.copy(muzzleOrigin).addScaledVector(muzzleDirection, LASER_RANGE);
+    }
 
-    laser.beam.scale.set(1, distance, 1);
-    laser.beam.position.set(0, 0, -distance * 0.5);
+    laserEndpointLocal.copy(laserEndpointWorld);
+    muzzlePoint.worldToLocal(laserEndpointLocal);
+
+    const position = laser.beam.geometry.getAttribute('position');
+    position.setXYZ(0, 0, 0, -0.018);
+    position.setXYZ(1, laserEndpointLocal.x, laserEndpointLocal.y, laserEndpointLocal.z);
+    position.needsUpdate = true;
+
     laser.dot.visible = Boolean(hit);
-    laser.dot.position.set(0, 0, -Math.max(0.035, distance - 0.006));
+    laser.dot.position.copy(laserEndpointLocal);
   }
 
   let flashVisible = Boolean(muzzleFlash.visible);
