@@ -1,29 +1,36 @@
 # Enemy models
 
-Put the skitter creature GLB in this folder using this exact filename:
+## Skitter creature
 
-`skitter_creature.glb`
-
-Full repository path:
+The active enemy model is:
 
 `assets/models/enemies/skitter_creature.glb`
 
-After the file is uploaded, refresh the game. The enemy loader will automatically:
+The supplied GLB has been inspected and currently contains:
 
-- load the model and all embedded animation clips
-- print the animation names to the browser console
-- try to identify idle, movement, attack, hit and death clips by name
-- fall back to animation order 1–5 when names are unclear
-- resize the model to a small hallway creature
-- spawn it toward the dark right-hand end of the extended corridor
-- keep it behind the apartment entrance boundary
+- 2,343 vertices across five mesh primitives
+- 4,366 triangles
+- 31-joint skinned rig
+- authored dimensions of approximately 0.24 m wide, 0.18 m high and 0.40 m long
+- forward direction along local +Z
+- attachment nodes named `ATTACH_Face` and `ATTACH_Mouth`
 
-The first-pass expected fallback animation order is:
+The five embedded animation clips are:
 
-1. Idle
-2. Walk, run, crawl or skitter
-3. Attack or lunge
-4. Hit or hurt
-5. Death
+1. `Idle` — 4.0 seconds
+2. `Skitter` — 0.5 seconds
+3. `Alert` — 1.2 seconds
+4. `Attack_Lunge` — 0.75 seconds
+5. `Death` — 1.6 seconds
 
-If the model faces backward or the fallback order is wrong, the loader constants can be adjusted after checking the animation names in the console.
+The runtime loader scales the creature to approximately 0.95 m long, removes root motion from the looping `Skitter` clip, and maps the clips by their exact names. There is no dedicated hurt animation, so a shortened, accelerated `Alert` animation is used as the temporary hit reaction.
+
+The creature spawns near the dark right-hand end of the extended corridor, detects the player at close range, and is clamped behind the apartment entrance boundary. The pistol and wooden bat both damage it through the shared combat-target system.
+
+Useful browser-console commands:
+
+- `game.getSkitterEnemy()`
+- `game.getSkitterAnimations()`
+- `game.alertSkitter()`
+- `game.damageSkitter(25)`
+- `game.respawnSkitter()`
