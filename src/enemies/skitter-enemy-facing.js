@@ -2,7 +2,7 @@ import { loadSkitterEnemy as loadBaseSkitterEnemy } from './skitter-enemy.js?v=2
 import {
   applyCorridorDistanceDarkening,
   CORRIDOR_DARKENING_PROFILE
-} from '../lighting/corridor-darkening.js?v=1';
+} from '../lighting/corridor-darkening.js?v=2';
 
 export async function loadSkitterEnemy(options) {
   const enemy = await loadBaseSkitterEnemy(options);
