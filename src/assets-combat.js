@@ -1,5 +1,5 @@
 import { loadDecorAssets as loadBaseDecorAssets } from './assets.js?base=1';
-import { loadSkitterEnemy } from './enemies/skitter-enemy-facing.js?v=3';
+import { loadSkitterEnemy } from './enemies/skitter-enemy-facing.js?v=4';
 
 export async function loadDecorAssets(options) {
   const decor = await loadBaseDecorAssets(options);
