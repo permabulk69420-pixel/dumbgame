@@ -2,8 +2,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { HOUSE } from './config.js?v=10';
 
 const FLOOR_TEXTURE_SIZE = 1024;
+const PLASTER_TEXTURE_SIZE = 512;
+
 const GENERATED_FLOOR_TILE_METRES = 2.6;
 const GENERATED_FLOOR_URL = './assets/textures/floor/oak_floor_basecolor.png?v=1';
+const GENERATED_WALL_URL = './assets/textures/walls/plaster_wall_basecolor.png?v=1';
+const GENERATED_CEILING_URL = './assets/textures/ceiling/plaster_ceiling_basecolor.png?v=1';
 
 function makeCanvas(width, height) {
   const canvas = document.createElement('canvas');
@@ -12,13 +16,12 @@ function makeCanvas(width, height) {
   return canvas;
 }
 
-function textureFromCanvas(canvas, {
+function configureTexture(texture, {
   repeatX = 1,
   repeatY = 1,
   colour = true,
   anisotropy = 4
 } = {}) {
-  const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(repeatX, repeatY);
@@ -26,7 +29,12 @@ function textureFromCanvas(canvas, {
   texture.anisotropy = anisotropy;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
   return texture;
+}
+
+function textureFromCanvas(canvas, options = {}) {
+  return configureTexture(new THREE.CanvasTexture(canvas), options);
 }
 
 function canvasTexture(width, height, draw, repeatX = 1, repeatY = 1) {
@@ -36,20 +44,6 @@ function canvasTexture(width, height, draw, repeatX = 1, repeatY = 1) {
   return textureFromCanvas(canvas, { repeatX, repeatY });
 }
 
-function plasterTexture(base) {
-  return canvasTexture(256, 256, (ctx, width, height) => {
-    const image = ctx.createImageData(width, height);
-    for (let i = 0; i < image.data.length; i += 4) {
-      const grain = Math.floor((Math.random() - 0.5) * 9);
-      image.data[i] = THREE.MathUtils.clamp(base[0] + grain, 0, 255);
-      image.data[i + 1] = THREE.MathUtils.clamp(base[1] + grain, 0, 255);
-      image.data[i + 2] = THREE.MathUtils.clamp(base[2] + grain, 0, 255);
-      image.data[i + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
-  }, 3, 3);
-}
-
 function floorRepeats() {
   return {
     x: HOUSE.width / GENERATED_FLOOR_TILE_METRES,
@@ -57,23 +51,21 @@ function floorRepeats() {
   };
 }
 
-function configureFloorTexture(texture, colour = true) {
-  const repeat = floorRepeats();
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat.x, repeat.y);
-  texture.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  texture.anisotropy = 8;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function deriveFloorMaps(image) {
-  const sourceWidth = image.naturalWidth || image.width || FLOOR_TEXTURE_SIZE;
-  const sourceHeight = image.naturalHeight || image.height || FLOOR_TEXTURE_SIZE;
-  const size = Math.max(256, Math.min(FLOOR_TEXTURE_SIZE, sourceWidth, sourceHeight));
+function deriveSurfaceMaps(image, {
+  sizeLimit,
+  repeatX,
+  repeatY,
+  anisotropy,
+  blurPixels,
+  detailGain,
+  broadGain,
+  roughnessBase,
+  roughnessDetailGain,
+  roughnessDarkGain
+}) {
+  const sourceWidth = image.naturalWidth || image.width || sizeLimit;
+  const sourceHeight = image.naturalHeight || image.height || sizeLimit;
+  const size = Math.max(256, Math.min(sizeLimit, sourceWidth, sourceHeight));
   const sourceCanvas = makeCanvas(size, size);
   const blurCanvas = makeCanvas(size, size);
   const bumpCanvas = makeCanvas(size, size);
@@ -84,7 +76,7 @@ function deriveFloorMaps(image) {
   const roughnessCtx = roughnessCanvas.getContext('2d');
 
   sourceCtx.drawImage(image, 0, 0, size, size);
-  blurCtx.filter = 'blur(4px)';
+  blurCtx.filter = `blur(${blurPixels}px)`;
   blurCtx.drawImage(sourceCanvas, 0, 0);
   blurCtx.filter = 'none';
 
@@ -102,14 +94,18 @@ function deriveFloorMaps(image) {
       + blurred.data[index + 2] * 0.0722;
     const detail = luminance - blurredLuminance;
     const bumpValue = THREE.MathUtils.clamp(
-      Math.round(128 + detail * 1.18 + (luminance - 128) * 0.07),
+      Math.round(128 + detail * detailGain + (luminance - 128) * broadGain),
       20,
       236
     );
     const roughValue = THREE.MathUtils.clamp(
-      Math.round(225 + Math.abs(detail) * 0.34 + (128 - luminance) * 0.055),
+      Math.round(
+        roughnessBase
+        + Math.abs(detail) * roughnessDetailGain
+        + (128 - luminance) * roughnessDarkGain
+      ),
       198,
-      246
+      248
     );
 
     bump.data[index] = bumpValue;
@@ -125,20 +121,47 @@ function deriveFloorMaps(image) {
 
   bumpCtx.putImageData(bump, 0, 0);
   roughnessCtx.putImageData(roughness, 0, 0);
+
+  const textureOptions = {
+    repeatX,
+    repeatY,
+    colour: false,
+    anisotropy
+  };
+
   return {
-    bump: configureFloorTexture(new THREE.CanvasTexture(bumpCanvas), false),
-    roughness: configureFloorTexture(new THREE.CanvasTexture(roughnessCanvas), false)
+    bump: textureFromCanvas(bumpCanvas, textureOptions),
+    roughness: textureFromCanvas(roughnessCanvas, textureOptions)
   };
 }
 
 function loadGeneratedFloorTexture(floor) {
+  const repeat = floorRepeats();
   const loader = new THREE.TextureLoader();
+
   loader.load(
     GENERATED_FLOOR_URL,
     (colourTexture) => {
       try {
-        configureFloorTexture(colourTexture, true);
-        const derived = deriveFloorMaps(colourTexture.image);
+        configureTexture(colourTexture, {
+          repeatX: repeat.x,
+          repeatY: repeat.y,
+          colour: true,
+          anisotropy: 8
+        });
+        const derived = deriveSurfaceMaps(colourTexture.image, {
+          sizeLimit: FLOOR_TEXTURE_SIZE,
+          repeatX: repeat.x,
+          repeatY: repeat.y,
+          anisotropy: 8,
+          blurPixels: 4,
+          detailGain: 1.18,
+          broadGain: 0.07,
+          roughnessBase: 225,
+          roughnessDetailGain: 0.34,
+          roughnessDarkGain: 0.055
+        });
+
         floor.map = colourTexture;
         floor.bumpMap = derived.bump;
         floor.roughnessMap = derived.roughness;
@@ -157,6 +180,65 @@ function loadGeneratedFloorTexture(floor) {
     undefined,
     (error) => {
       console.warn('Generated floor texture could not load; keeping the flat oak fallback.', error);
+    }
+  );
+}
+
+function loadGeneratedPlasterTexture({
+  url,
+  materials,
+  repeatX,
+  repeatY,
+  bumpScale,
+  name,
+  style,
+  label
+}) {
+  const loader = new THREE.TextureLoader();
+
+  loader.load(
+    url,
+    (colourTexture) => {
+      try {
+        configureTexture(colourTexture, {
+          repeatX,
+          repeatY,
+          colour: true,
+          anisotropy: 4
+        });
+        const derived = deriveSurfaceMaps(colourTexture.image, {
+          sizeLimit: PLASTER_TEXTURE_SIZE,
+          repeatX,
+          repeatY,
+          anisotropy: 4,
+          blurPixels: 3,
+          detailGain: 0.58,
+          broadGain: 0.018,
+          roughnessBase: 238,
+          roughnessDetailGain: 0.12,
+          roughnessDarkGain: 0.018
+        });
+
+        for (const material of materials) {
+          material.map = colourTexture;
+          material.bumpMap = derived.bump;
+          material.roughnessMap = derived.roughness;
+          material.color.setHex(0xffffff);
+          material.bumpScale = bumpScale;
+          material.roughness = 1;
+          material.name = name;
+          material.userData.surfaceStyle = style;
+          material.userData.textureUrl = url;
+          material.needsUpdate = true;
+        }
+      } catch (error) {
+        colourTexture.dispose();
+        console.warn(`Generated ${label} texture loaded but its material maps could not be derived.`, error);
+      }
+    },
+    undefined,
+    (error) => {
+      console.warn(`Generated ${label} texture could not load; keeping the flat fallback.`, error);
     }
   );
 }
@@ -186,22 +268,60 @@ function roofTexture() {
 }
 
 export function createMaterials() {
-  const plaster = plasterTexture([218, 213, 204]);
-  const innerPlaster = plasterTexture([203, 197, 187]);
   const roof = roofTexture();
 
+  const outer = new THREE.MeshStandardMaterial({
+    name: 'Flat_Outer_Plaster_Fallback',
+    color: 0xdad5cc,
+    roughness: 0.96
+  });
+  const inner = new THREE.MeshStandardMaterial({
+    name: 'Flat_Inner_Plaster_Fallback',
+    color: 0xeeeae2,
+    roughness: 0.98
+  });
+  const ceiling = new THREE.MeshStandardMaterial({
+    name: 'Flat_Ceiling_Plaster_Fallback',
+    color: 0xf1eee8,
+    roughness: 1
+  });
   const floor = new THREE.MeshStandardMaterial({
     name: 'Flat_Oak_Floor_Fallback',
     color: 0xa98255,
     roughness: 0.96,
     metalness: 0
   });
+
   floor.userData.floorStyle = 'flat-oak-fallback';
   loadGeneratedFloorTexture(floor);
 
+  // The same wall texture covers internal partitions and the apartment-facing sides of
+  // perimeter walls. It is deliberately subtle enough that its fixed UV repeat is not obvious.
+  loadGeneratedPlasterTexture({
+    url: GENERATED_WALL_URL,
+    materials: [outer, inner],
+    repeatX: 2.2,
+    repeatY: 2.2,
+    bumpScale: 0.0035,
+    name: 'Generated_Painted_Plaster_Wall',
+    style: 'generated-painted-plaster-wall-v1',
+    label: 'wall'
+  });
+
+  loadGeneratedPlasterTexture({
+    url: GENERATED_CEILING_URL,
+    materials: [ceiling],
+    repeatX: HOUSE.width / 3.1,
+    repeatY: HOUSE.depth / 3.1,
+    bumpScale: 0.0022,
+    name: 'Generated_Painted_Plaster_Ceiling',
+    style: 'generated-painted-plaster-ceiling-v1',
+    label: 'ceiling'
+  });
+
   return {
-    outer: new THREE.MeshStandardMaterial({ map: plaster, color: 0xffffff, roughness: 0.94 }),
-    inner: new THREE.MeshStandardMaterial({ map: innerPlaster, color: 0xffffff, roughness: 0.95 }),
+    outer,
+    inner,
     floor,
     foundation: new THREE.MeshStandardMaterial({ color: 0x454a4c, roughness: 1 }),
     trim: new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.72 }),
@@ -221,7 +341,7 @@ export function createMaterials() {
       side: THREE.FrontSide
     }),
 
-    ceiling: new THREE.MeshStandardMaterial({ color: 0xeeeae2, roughness: 0.96 }),
+    ceiling,
     downlight: new THREE.MeshStandardMaterial({
       color: 0xe8e5df,
       emissive: 0xffd89a,
