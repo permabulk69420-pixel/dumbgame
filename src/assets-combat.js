@@ -1,5 +1,5 @@
 import { loadDecorAssets as loadBaseDecorAssets } from './assets.js?base=1';
-import { loadSkitterEnemy } from './enemies/skitter-enemy.js?v=1';
+import { loadSkitterEnemy } from './enemies/skitter-enemy.js?v=2';
 
 export async function loadDecorAssets(options) {
   const decor = await loadBaseDecorAssets(options);
@@ -13,6 +13,9 @@ export async function loadDecorAssets(options) {
     });
   } catch (error) {
     console.error('Skitter enemy failed to load', error);
+    if (options.statusElement) {
+      options.statusElement.textContent = 'Apartment loaded; the skitter creature failed to load.';
+    }
   }
 
   const baseUpdate = decor.update.bind(decor);
