@@ -1,9 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
-import { ASSETS, HOUSE, SCALE } from '../config.js?v=11';
+import { ASSETS, HOUSE, SCALE } from '../config.js?v=12';
 import { loadGLB, prepareModel } from '../asset-loader.js?v=2';
 import { registerCombatTarget } from '../combat/combat-system.js?v=1';
 
-const TARGET_MODEL_SIZE = 0.95;
+const TARGET_MODEL_LENGTH = 0.95;
 const MAX_HEALTH = 100;
 const MOVE_SPEED = 1.35;
 const AGGRO_DISTANCE = 14;
@@ -11,6 +11,9 @@ const ATTACK_DISTANCE = 0.92;
 const APARTMENT_FRONT_Z = -HOUSE.depth / 2;
 const HALLWAY_STOP_Z = APARTMENT_FRONT_Z - 0.48;
 const APARTMENT_DOOR_X = -HOUSE.width / 2 + 16 * SCALE;
+
+// The supplied creature's head and ATTACH_Face node point along local +Z.
+// THREE.Object3D.lookAt points local -Z at its target, so the visual needs this half-turn.
 const MODEL_FORWARD_YAW = Math.PI;
 
 const playerPosition = new THREE.Vector3();
@@ -18,6 +21,7 @@ const targetPosition = new THREE.Vector3();
 const movement = new THREE.Vector3();
 const modelBounds = new THREE.Box3();
 const modelSize = new THREE.Vector3();
+const originalModelSize = new THREE.Vector3();
 const corridorBounds = new THREE.Box3();
 
 async function assetExists(url) {
@@ -37,27 +41,47 @@ function findCamera(scene) {
   return camera;
 }
 
-function findClip(clips, keywords, fallbackIndex = -1) {
-  const match = clips.find((clip) => {
-    const name = clip.name.toLowerCase();
-    return keywords.some((keyword) => name.includes(keyword));
-  });
-  return match || clips[fallbackIndex] || null;
+function normaliseClipName(name = '') {
+  return name.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function findNamedClip(clips, exactName, fallbackKeywords = []) {
+  const normalisedExact = normaliseClipName(exactName);
+  return clips.find((clip) => normaliseClipName(clip.name) === normalisedExact) ||
+    clips.find((clip) => {
+      const name = normaliseClipName(clip.name);
+      return fallbackKeywords.some((keyword) => name.includes(keyword));
+    }) || null;
+}
+
+function makeLocomotionClipInPlace(clip) {
+  if (!clip) return null;
+  const inPlace = clip.clone();
+  // The GLB includes a J_Root translation track in every clip. The game moves the
+  // enemy's outer root itself, so retaining root motion in the looping Skitter clip
+  // would make the mesh surge forward and snap backwards every half-second.
+  inPlace.tracks = inPlace.tracks.filter((track) =>
+    !/J_Root.*(?:position|translation)$/i.test(track.name));
+  inPlace.resetDuration();
+  return inPlace;
 }
 
 function buildAnimationSet(mixer, clips) {
-  const clipMap = {
-    idle: findClip(clips, ['idle', 'breath', 'stand'], 0),
-    move: findClip(clips, ['walk', 'run', 'crawl', 'skitter', 'move'], 1),
-    attack: findClip(clips, ['attack', 'bite', 'lunge', 'strike'], 2),
-    hit: findClip(clips, ['hit', 'hurt', 'damage', 'impact'], 3),
-    death: findClip(clips, ['death', 'die', 'dead'], 4)
-  };
+  const idleClip = findNamedClip(clips, 'Idle', ['idle']);
+  const moveClip = makeLocomotionClipInPlace(
+    findNamedClip(clips, 'Skitter', ['skitter', 'crawl', 'walk', 'run', 'move'])
+  );
+  const alertClip = findNamedClip(clips, 'Alert', ['alert', 'notice', 'threat']);
+  const attackClip = findNamedClip(clips, 'Attack_Lunge', ['attack', 'lunge', 'bite', 'strike']);
+  const deathClip = findNamedClip(clips, 'Death', ['death', 'die', 'dead']);
 
-  return Object.fromEntries(Object.entries(clipMap).map(([key, clip]) => [
-    key,
-    clip ? mixer.clipAction(clip) : null
-  ]));
+  return {
+    idle: idleClip ? mixer.clipAction(idleClip) : null,
+    move: moveClip ? mixer.clipAction(moveClip) : null,
+    alert: alertClip ? mixer.clipAction(alertClip) : null,
+    attack: attackClip ? mixer.clipAction(attackClip) : null,
+    death: deathClip ? mixer.clipAction(deathClip) : null
+  };
 }
 
 function installDebugApi(enemy) {
@@ -67,6 +91,7 @@ function installDebugApi(enemy) {
     window.game.damageSkitter = (amount = 25) => enemy.damage(amount);
     window.game.respawnSkitter = () => enemy.respawn();
     window.game.getSkitterAnimations = () => [...enemy.animationNames];
+    window.game.alertSkitter = () => enemy.alert();
     return true;
   };
 
@@ -89,12 +114,15 @@ export async function loadSkitterEnemy({
   visual.rotation.y = MODEL_FORWARD_YAW;
 
   modelBounds.setFromObject(visual);
-  modelBounds.getSize(modelSize);
-  const largestDimension = Math.max(modelSize.x, modelSize.y, modelSize.z, 0.001);
-  visual.scale.multiplyScalar(TARGET_MODEL_SIZE / largestDimension);
+  modelBounds.getSize(originalModelSize);
+  const originalLength = Math.max(originalModelSize.x, originalModelSize.y, originalModelSize.z, 0.001);
+  visual.scale.multiplyScalar(TARGET_MODEL_LENGTH / originalLength);
   visual.updateMatrixWorld(true);
   modelBounds.setFromObject(visual);
   visual.position.y -= modelBounds.min.y;
+  visual.updateMatrixWorld(true);
+  modelBounds.setFromObject(visual);
+  modelBounds.getSize(modelSize);
 
   const root = new THREE.Group();
   root.name = 'SkitterEnemy';
@@ -125,23 +153,39 @@ export async function loadSkitterEnemy({
 
   const camera = findCamera(scene);
   const mixer = new THREE.AnimationMixer(visual);
-  const actions = buildAnimationSet(mixer, gltf.animations || []);
   const animationNames = (gltf.animations || []).map((clip) => clip.name);
-  console.info('Skitter animations:', animationNames);
+  const actions = buildAnimationSet(mixer, gltf.animations || []);
+  const faceAttach = visual.getObjectByName('ATTACH_Face') || null;
+  const mouthAttach = visual.getObjectByName('ATTACH_Mouth') || null;
+
+  console.info('Skitter GLB inspected', {
+    animationNames,
+    originalSizeMetres: originalModelSize.toArray(),
+    runtimeSizeMetres: modelSize.toArray(),
+    forwardAxis: '+Z',
+    faceAttach: faceAttach?.name || null,
+    mouthAttach: mouthAttach?.name || null
+  });
 
   let activeAction = null;
   let alerted = false;
   let dead = false;
-  let hitLock = 0;
+  let reactionLock = 0;
+  let alertLock = 0;
   let attackLock = 0;
   let attackCooldown = 0;
 
-  function playAction(action, { once = false, fade = 0.16, force = false } = {}) {
+  function playAction(action, {
+    once = false,
+    fade = 0.16,
+    force = false,
+    timeScale = 1
+  } = {}) {
     if (!action || (!force && action === activeAction)) return;
     const previous = activeAction;
     action.reset();
     action.enabled = true;
-    action.setEffectiveTimeScale(1);
+    action.setEffectiveTimeScale(timeScale);
     action.setEffectiveWeight(1);
     action.clampWhenFinished = once;
     action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
@@ -155,21 +199,42 @@ export async function loadSkitterEnemy({
     if (statusElement) statusElement.textContent = text;
   }
 
+  function alert({ announce = true } = {}) {
+    if (dead || alerted) return false;
+    alerted = true;
+    if (actions.alert) {
+      alertLock = Math.min(1.2, actions.alert.getClip().duration);
+      playAction(actions.alert, { once: true, fade: 0.08, force: true });
+    }
+    if (announce) setStatus('The skitter noticed you · it is staying in the hallway');
+    return true;
+  }
+
   const combatTarget = registerCombatTarget(root, {
     maxHealth: MAX_HEALTH,
     hitRadius: 0.48,
     hitOffset: [0, 0.32, 0],
     onDamage(event) {
-      alerted = true;
+      if (!alerted) alert({ announce: false });
       if (event.health > 0) {
-        hitLock = actions.hit ? Math.min(0.5, actions.hit.getClip().duration * 0.8) : 0.16;
-        playAction(actions.hit, { once: true, fade: 0.05, force: true });
+        // This GLB has no dedicated hurt clip. Alert is the closest readable recoil,
+        // played fast and briefly so bullets do not freeze it for the full 1.2 seconds.
+        reactionLock = actions.alert ? 0.28 : 0.12;
+        if (actions.alert) {
+          playAction(actions.alert, {
+            once: true,
+            fade: 0.04,
+            force: true,
+            timeScale: 2.2
+          });
+        }
         setStatus(`Skitter hit · ${Math.ceil(event.health)}/${event.maxHealth} health`);
       }
     },
     onDeath() {
       dead = true;
-      hitLock = 0;
+      reactionLock = 0;
+      alertLock = 0;
       attackLock = 0;
       playAction(actions.death, { once: true, fade: 0.08, force: true });
       setStatus('Skitter killed · hallway temporarily less horrible');
@@ -180,7 +245,8 @@ export async function loadSkitterEnemy({
     combatTarget.reset();
     dead = false;
     alerted = false;
-    hitLock = 0;
+    reactionLock = 0;
+    alertLock = 0;
     attackLock = 0;
     attackCooldown = 0;
     root.visible = true;
@@ -201,11 +267,15 @@ export async function loadSkitterEnemy({
     mixer,
     actions,
     animationNames,
+    faceAttach,
+    mouthAttach,
+    modelSize: modelSize.clone(),
     combatTarget,
     movementBounds,
     damage(amount = 25) {
       return combatTarget.damage(amount, { source: 'debug', cooldownMs: 0 });
     },
+    alert,
     respawn,
     isDead: () => dead,
     isAlerted: () => alerted,
@@ -213,14 +283,15 @@ export async function loadSkitterEnemy({
       mixer.update(dt);
       if (dead || !camera) return;
 
-      hitLock = Math.max(0, hitLock - dt);
+      reactionLock = Math.max(0, reactionLock - dt);
+      alertLock = Math.max(0, alertLock - dt);
       attackLock = Math.max(0, attackLock - dt);
       attackCooldown = Math.max(0, attackCooldown - dt);
 
       camera.getWorldPosition(playerPosition);
       playerPosition.y = floorY;
       const distanceToPlayer = root.position.distanceTo(playerPosition);
-      if (!alerted && distanceToPlayer <= AGGRO_DISTANCE) alerted = true;
+      if (!alerted && distanceToPlayer <= AGGRO_DISTANCE) alert();
 
       if (!alerted) {
         playAction(actions.idle || actions.move);
@@ -244,7 +315,7 @@ export async function loadSkitterEnemy({
       movement.y = 0;
       const distance = movement.length();
 
-      if (hitLock > 0 || attackLock > 0) return;
+      if (reactionLock > 0 || alertLock > 0 || attackLock > 0) return;
 
       if (playerIsInHallway && distance <= ATTACK_DISTANCE) {
         if (attackCooldown <= 0) {
@@ -277,6 +348,7 @@ export async function loadSkitterEnemy({
     }
   };
 
+  root.userData.enemy = enemy;
   installDebugApi(enemy);
   setStatus('Skitter loaded in the dark hallway · it cannot cross into the apartment');
   return enemy;
