@@ -8,6 +8,7 @@ import { loadBedroomBed } from './furniture/bed-setup.js?v=2';
 import { loadBedsideSetup } from './furniture/bedside-setup.js?v=6';
 import { loadEntertainmentSetup } from './furniture/entertainment-setup.js?v=3';
 import { loadWoodenBat } from './weapons/wooden-bat.js?v=4';
+import { loadApartmentCeilingLights } from './lighting/ceiling-lights.js?v=1';
 import { loadApartmentLightSwitches } from './lighting/light-switches.js?v=2';
 import { loadApartmentWindows } from './windows/apartment-windows.js?v=1';
 import { registerTopSurfaceCollider } from './physics/apartment-colliders.js?v=1';
@@ -29,9 +30,22 @@ export async function loadDecorAssets({
   let bedroomBed = null;
   let bedsideSetup = null;
   let woodenBat = null;
+  let ceilingLights = null;
   let lightSwitches = null;
   let apartmentWindows = null;
   let entertainmentSetup = null;
+
+  try {
+    ceilingLights = await loadApartmentCeilingLights({
+      scene,
+      statusElement
+    });
+    updaters.push(ceilingLights.update);
+    disposers.push(ceilingLights.dispose);
+  } catch (error) {
+    console.error('Apartment ceiling lights failed to load', error);
+    if (statusElement) statusElement.textContent = 'Apartment loaded; the replacement ceiling lights failed to load.';
+  }
 
   try {
     const gltf = await loadGLB(ASSETS.computerDesk);
@@ -202,6 +216,7 @@ export async function loadDecorAssets({
     bed: bedroomBed,
     bedside: bedsideSetup,
     bat: woodenBat,
+    ceilingLights,
     lightSwitches,
     windows: apartmentWindows,
     entertainment: entertainmentSetup,
