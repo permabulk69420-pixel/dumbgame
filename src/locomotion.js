@@ -2,6 +2,10 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
 import { HOUSE, PLAYER } from './config.js?v=6';
 import { createFootstepSystem } from './audio/footsteps.js?v=3';
 
+const THUMBSTICK_BUTTON = 3;
+const CROUCH_OFFSET = -0.58;
+const CROUCH_DAMPING = 13;
+
 export function thumbstick(source) {
   const gamepad = source?.gamepad;
   if (!gamepad?.axes?.length) return { x: 0, y: 0 };
@@ -41,6 +45,9 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
   let currentSession = null;
   let calibrationPending = true;
   let targetEyeHeight = PLAYER.eyeHeight ?? 1.65;
+  let crouched = false;
+  let crouchOffset = 0;
+  let leftThumbstickDown = false;
 
   function canOccupy(x, z) {
     for (const wall of collisionSegments) {
@@ -69,12 +76,38 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     camera.getWorldPosition(headBefore);
     if (!Number.isFinite(headBefore.y) || headBefore.y < 0.08 || headBefore.y > 4) return false;
 
-    // Local-floor reports the user's real headset height. Offset the whole rig once so
-    // seated play still walks around at a normal virtual eye height.
-    rig.position.y += targetEyeHeight - headBefore.y;
+    // Local-floor reports the user's real headset height. The crouch offset is kept
+    // separate so recalibrating while crouched does not unexpectedly stand the player up.
+    rig.position.y += targetEyeHeight + crouchOffset - headBefore.y;
     rig.updateMatrixWorld(true);
     calibrationPending = false;
     return true;
+  }
+
+  function setCrouched(value) {
+    crouched = Boolean(value);
+    return crouched;
+  }
+
+  function toggleCrouched() {
+    return setCrouched(!crouched);
+  }
+
+  function updateCrouch(dt, leftSource) {
+    const pressed = Boolean(leftSource?.gamepad?.buttons?.[THUMBSTICK_BUTTON]?.pressed);
+    if (pressed && !leftThumbstickDown) toggleCrouched();
+    leftThumbstickDown = pressed;
+
+    const targetOffset = crouched ? CROUCH_OFFSET : 0;
+    let nextOffset = THREE.MathUtils.damp(crouchOffset, targetOffset, CROUCH_DAMPING, dt);
+    if (Math.abs(nextOffset - targetOffset) < 0.001) nextOffset = targetOffset;
+
+    const delta = nextOffset - crouchOffset;
+    if (Math.abs(delta) > 0.00001) {
+      rig.position.y += delta;
+      rig.updateMatrixWorld(true);
+    }
+    crouchOffset = nextOffset;
   }
 
   function turnAroundHead(angle) {
@@ -100,12 +133,18 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     const session = renderer.xr.getSession();
     if (!session) {
       currentSession = null;
+      crouched = false;
+      crouchOffset = 0;
+      leftThumbstickDown = false;
       return;
     }
 
     if (session !== currentSession) {
       currentSession = session;
       calibrationPending = true;
+      crouched = false;
+      crouchOffset = 0;
+      leftThumbstickDown = false;
       footsteps.reset();
     }
     if (calibrationPending) applyHeightCalibration();
@@ -116,6 +155,8 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
       if (source.handedness === 'left') leftSource = source;
       if (source.handedness === 'right') rightSource = source;
     }
+
+    updateCrouch(dt, leftSource);
 
     const left = thumbstick(leftSource);
     const rightInput = thumbstick(rightSource);
@@ -168,6 +209,9 @@ export function createLocomotion({ renderer, camera, rig, collisionSegments, pla
     canOccupy,
     requestHeightCalibration,
     getTargetEyeHeight: () => targetEyeHeight,
+    setCrouched,
+    toggleCrouched,
+    isCrouched: () => crouched,
     setFootstepsEnabled: footsteps.setEnabled,
     areFootstepsEnabled: footsteps.isEnabled
   };
