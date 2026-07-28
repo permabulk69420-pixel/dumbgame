@@ -2,7 +2,7 @@ import { createHouse as createExpandedHouse } from './house-expanded.js?base=1';
 import {
   applyCorridorDistanceDarkening,
   CORRIDOR_DARKENING_PROFILE
-} from './lighting/corridor-darkening.js?v=1';
+} from './lighting/corridor-darkening.js?v=2';
 
 export function createHouse(scene, materials) {
   const houseData = createExpandedHouse(scene, materials);
