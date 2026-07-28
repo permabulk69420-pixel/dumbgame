@@ -108,7 +108,8 @@ function extendApartmentCorridor(houseData, MAT) {
     minX: newMinX,
     maxX: newMaxX,
     minZ: farZ,
-    maxZ: nearZ
+    // Slightly overlap the apartment slab so physics objects cross the doorway cleanly.
+    maxZ: apartmentFront + wallThickness * 0.5
   };
 }
 
