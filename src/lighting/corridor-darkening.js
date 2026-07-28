@@ -5,6 +5,48 @@ const DEFAULT_PROFILE = Object.freeze({
   minimumLight: 0.055
 });
 
+const TEXTURE_PROPERTIES = Object.freeze([
+  'map',
+  'lightMap',
+  'aoMap',
+  'emissiveMap',
+  'bumpMap',
+  'normalMap',
+  'displacementMap',
+  'roughnessMap',
+  'metalnessMap',
+  'alphaMap',
+  'envMap'
+]);
+
+function syncMaterialState(clone, source) {
+  if (clone.userData.corridorSourceVersion === source.version) return;
+
+  let shaderDefinesChanged = false;
+  for (const property of TEXTURE_PROPERTIES) {
+    if (clone[property] === source[property]) continue;
+    clone[property] = source[property];
+    shaderDefinesChanged = true;
+  }
+
+  clone.color?.copy?.(source.color);
+  clone.emissive?.copy?.(source.emissive);
+  clone.normalScale?.copy?.(source.normalScale);
+  clone.roughness = source.roughness;
+  clone.metalness = source.metalness;
+  clone.bumpScale = source.bumpScale;
+  clone.displacementScale = source.displacementScale;
+  clone.displacementBias = source.displacementBias;
+  clone.opacity = source.opacity;
+  clone.transparent = source.transparent;
+  clone.alphaTest = source.alphaTest;
+  clone.side = source.side;
+  clone.depthWrite = source.depthWrite;
+  clone.userData.corridorSourceVersion = source.version;
+
+  if (shaderDefinesChanged) clone.needsUpdate = true;
+}
+
 function makeDarkenedMaterial(source, profile) {
   if (!source?.isMaterial) return source;
   if (!source.isMeshStandardMaterial && !source.isMeshPhysicalMaterial) return source;
@@ -16,7 +58,8 @@ function makeDarkenedMaterial(source, profile) {
   material.name = `${source.name || source.type}_CorridorFalloff`;
   material.userData = {
     ...source.userData,
-    corridorDistanceDarkening: { ...profile }
+    corridorDistanceDarkening: { ...profile },
+    corridorSourceVersion: source.version
   };
 
   material.onBeforeCompile = (shader, renderer) => {
@@ -58,7 +101,7 @@ function makeDarkenedMaterial(source, profile) {
   };
 
   material.customProgramCacheKey = () =>
-    `${previousCacheKey?.() || source.type}|corridor-distance-darkening-v1`;
+    `${previousCacheKey?.() || source.type}|corridor-distance-darkening-v2`;
   material.needsUpdate = true;
   return material;
 }
@@ -71,13 +114,17 @@ export function applyCorridorDistanceDarkening(root, options = {}) {
     ...options
   };
   const clones = new Map();
+  const sources = new WeakMap();
   const created = [];
 
   function cloneMaterial(source) {
     if (clones.has(source)) return clones.get(source);
     const clone = makeDarkenedMaterial(source, profile);
     clones.set(source, clone);
-    if (clone !== source) created.push(clone);
+    if (clone !== source) {
+      sources.set(clone, source);
+      created.push(clone);
+    }
     return clone;
   }
 
@@ -87,6 +134,16 @@ export function applyCorridorDistanceDarkening(root, options = {}) {
       ? object.material.map(cloneMaterial)
       : cloneMaterial(object.material);
     object.userData.corridorDistanceDarkened = true;
+
+    const previousBeforeRender = object.onBeforeRender;
+    object.onBeforeRender = function (...args) {
+      const materials = Array.isArray(this.material) ? this.material : [this.material];
+      for (const material of materials) {
+        const source = sources.get(material);
+        if (source) syncMaterialState(material, source);
+      }
+      previousBeforeRender?.apply(this, args);
+    };
   });
 
   return created;
